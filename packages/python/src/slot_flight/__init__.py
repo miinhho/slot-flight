@@ -7,6 +7,13 @@ from .errors import (
     SlotFlightStreamError,
     SlotFlightValidationError,
 )
+from .object import (
+    CompletedSlot,
+    SlotObjectOutput,
+    SlotObjectStream,
+    create_slot_object_stream,
+    slot_object,
+)
 from .types import (
     SlotDefinition,
     SlotFlightRequest,
@@ -24,5 +31,10 @@ __all__ = [
     "SlotFlightStreamError",
     "SlotFlightValidationError",
     "SlotFrameRequest",
+    "SlotObjectOutput",
+    "SlotObjectStream",
+    "CompletedSlot",
+    "create_slot_object_stream",
     "slot_flight",
+    "slot_object",
 ]

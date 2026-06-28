@@ -218,12 +218,12 @@ def _validation_error(error: Exception) -> Exception:
 def _validate_final(validator: Any | None, state: dict[str, Any]) -> Any:
     if validator is None:
         return state
-    if callable(validator):
-        return validator(state)
     if hasattr(validator, "model_validate"):
         return validator.model_validate(state)
     if hasattr(validator, "parse_obj"):
         return validator.parse_obj(state)
+    if callable(validator):
+        return validator(state)
     raise SlotFlightConfigurationError(
         "validate_final must be callable or a Pydantic-style model."
     )

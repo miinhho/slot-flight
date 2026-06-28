@@ -3,30 +3,39 @@
 Python SDK for slot-wise LLM value streaming with server-owned JSON assembly.
 
 This package implements the same slot frame protocol used by the TypeScript SDK.
-The core engine is provider-independent: pass an async generator that yields text
-chunks, and `SlotFlight` parses frames, validates slot values, retries failed
-slots, and assembles the final object.
+The core engine is provider-independent, and the public object API is Pydantic
+first. Provider/framework adapters are available for OpenAI, Anthropic, and
+LangChain.
 
 ```py
-from slot_flight import SlotDefinition, SlotFlight
+from openai import AsyncOpenAI
+from pydantic import BaseModel, Field
+from slot_flight import slot_object
+from slot_flight.adapters.openai import stream_slot_object
 
 
-async def generate(request):
-    for slot in request.slots:
-        yield f"<{slot.id}>Alice</{slot.id}>"
+class Triage(BaseModel):
+    summary: str = Field(description="Write one concise operational summary.")
+    tags: list[str] = Field(description="Write a JSON array of exactly 3 tags.")
 
 
-flight = SlotFlight(
-    slots=[
-        SlotDefinition(
-            path="name",
-            prompt="Write the person's name.",
-            validate=lambda value: str(value),
-        )
-    ],
-    generate=generate,
+openai = AsyncOpenAI()
+
+stream = stream_slot_object(
+    client=openai,
+    model="gpt-4.1-mini",
+    messages=[{"role": "user", "content": "Classify this feedback."}],
+    output=slot_object(Triage),
 )
 
-async for event in flight.run():
-    print(event)
+result = await stream.final_object()
+```
+
+## Development
+
+```sh
+uv sync --all-extras --dev
+uv run ruff check .
+uv run pytest
+uv build
 ```

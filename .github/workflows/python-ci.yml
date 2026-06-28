@@ -35,8 +35,17 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install package
-        run: python -m pip install -e packages/python
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies
+        working-directory: packages/python
+        run: uv sync --locked --all-extras --dev
+
+      - name: Lint
+        working-directory: packages/python
+        run: uv run ruff check .
 
       - name: Test
-        run: python -m unittest discover -s packages/python/tests
+        working-directory: packages/python
+        run: uv run pytest

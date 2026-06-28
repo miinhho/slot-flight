@@ -90,48 +90,20 @@ TypeScript-specific docs and examples live in
 
 ## Python
 
-The Python SDK currently provides the provider-independent core engine. It
-accepts an async generator that yields text chunks, then parses slot frames,
-validates values, retries failed slots, and emits progressive events.
+The Python SDK provides a Pydantic-first object API plus provider/framework
+adapters for OpenAI, Anthropic, and LangChain.
 
 ```py
-from slot_flight import SlotDefinition, SlotFlight
+from pydantic import BaseModel, Field
+from slot_flight import slot_object
 
 
-def non_empty_string(value):
-    if not isinstance(value, str) or value == "":
-        raise ValueError("expected non-empty string")
-    return value
+class Triage(BaseModel):
+    summary: str = Field(description="Write one concise operational summary.")
+    tags: list[str] = Field(description="Write a JSON array of exactly 3 tags.")
 
 
-async def generate(request):
-    values = {
-        "summary": "Streaming JSON assembly without model-owned JSON.",
-        "tags": '["llm", "json", "streaming"]',
-    }
-    for slot in request.slots:
-        yield f"<{slot.id}>{values[slot.path]}</{slot.id}>"
-
-
-flight = SlotFlight(
-    slots=[
-        SlotDefinition(
-            path="summary",
-            prompt="Write one concise operational summary.",
-            validate=non_empty_string,
-        ),
-        SlotDefinition(
-            path="tags",
-            prompt="Write a JSON array of exactly 3 short tags.",
-            mode="json",
-            validate=lambda value: value,
-        ),
-    ],
-    generate=generate,
-)
-
-async for event in flight.run():
-    print(event)
+output = slot_object(Triage)
 ```
 
 Python package details live in `packages/python`.
@@ -153,8 +125,10 @@ bun run build
 Language-specific checks:
 
 ```sh
-cd packages/typescript && bun run test
-PYTHONPATH=packages/python/src python3 -m unittest discover -s packages/python/tests
+(cd packages/typescript && bun run test)
+(cd packages/python && uv sync --all-extras --dev)
+(cd packages/python && uv run ruff check .)
+(cd packages/python && uv run pytest)
 ```
 
 CI is split by changed paths:
