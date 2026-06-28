@@ -8,6 +8,8 @@ first. Provider/framework adapters are available for OpenAI, Anthropic, and
 LangChain. Runnable examples live in `examples/`.
 
 ```py
+import os
+
 from openai import AsyncOpenAI
 from pydantic import BaseModel, Field
 from slot_flight import slot_object
@@ -19,11 +21,18 @@ class Triage(BaseModel):
     tags: list[str] = Field(description="Write a JSON array of exactly 3 tags.")
 
 
-openai = AsyncOpenAI()
+openai = AsyncOpenAI(
+    api_key=(
+        os.getenv("API_KEY")
+        or os.getenv("NVIDIA_API_KEY")
+        or os.getenv("OPENAI_API_KEY")
+    ),
+    base_url=os.getenv("API_BASE_URL") or os.getenv("OPENAI_BASE_URL"),
+)
 
 stream = stream_slot_object(
     client=openai,
-    model="gpt-4.1-mini",
+    model=os.getenv("MODEL", "openai/gpt-oss-20b"),
     messages=[{"role": "user", "content": "Classify this feedback."}],
     output=slot_object(Triage),
 )
@@ -34,10 +43,13 @@ result = await stream.final_object()
 ## Examples
 
 ```sh
-uv run --extra openai examples/openai.py
-uv run --extra anthropic examples/anthropic.py
+uv run --extra openai examples/openai_compatible.py
+uv run --extra anthropic examples/anthropic_sdk.py
 uv run --extra langchain examples/langchain.py
 ```
+
+The OpenAI example works with OpenAI-compatible endpoints such as NVIDIA NIM:
+set `API_KEY`, `API_BASE_URL`, and `MODEL` as shown in the root `.env.example`.
 
 ## Development
 
