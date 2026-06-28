@@ -1,3 +1,4 @@
+import asyncio
 import unittest
 from typing import Any, Literal, cast
 
@@ -22,6 +23,10 @@ class Article(BaseModel):
 
 class NestedArticle(BaseModel):
     metadata: Metadata = Field(description="Write the full metadata object.")
+
+
+class TitleOnly(BaseModel):
+    title: str = Field(description="Write a short title.")
 
 
 class SlotObjectTest(unittest.IsolatedAsyncioTestCase):
@@ -130,6 +135,55 @@ class SlotObjectTest(unittest.IsolatedAsyncioTestCase):
             await stream.final_object(),
             NestedArticle(metadata=Metadata(audience="backend engineers")),
         )
+
+    async def test_completed_slots_and_final_object_share_one_model_run(self):
+        output = slot_object(Article)
+        run_count = 0
+
+        async def generate(request):
+            nonlocal run_count
+            run_count += 1
+            values = {
+                "title": "Slot-wise JSON",
+                "priority": "high",
+                "tags": '["llm","json"]',
+                "metadata.audience": "backend engineers",
+            }
+            for slot in request.slots:
+                yield f"<{slot.id}>{values[slot.path]}</{slot.id}>"
+
+        stream = create_slot_object_stream(output=output, generate=generate)
+
+        completed = [slot async for slot in stream.completed_slots()]
+        final_object = await stream.final_object()
+
+        self.assertEqual(run_count, 1)
+        self.assertEqual(
+            [slot.slot for slot in completed],
+            [slot.path for slot in output.slots],
+        )
+        self.assertEqual(final_object.title, "Slot-wise JSON")
+
+    async def test_rejects_second_live_consumer(self):
+        output = slot_object(TitleOnly)
+        release = asyncio.Event()
+
+        async def generate(request):
+            slot = request.slots[0]
+            yield f"<{slot.id}>Slot-wise JSON</{slot.id}>"
+            await release.wait()
+
+        stream = create_slot_object_stream(output=output, generate=generate)
+        iterator = stream.events().__aiter__()
+        await iterator.__anext__()
+
+        with self.assertRaisesRegex(RuntimeError, "already has a live consumer"):
+            await stream.final_object()
+
+        release.set()
+        with self.assertRaises(StopAsyncIteration):
+            while True:
+                await iterator.__anext__()
 
 
 if __name__ == "__main__":

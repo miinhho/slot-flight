@@ -31,13 +31,17 @@ class CompletedSlot:
 class SlotObjectStream:
     def __init__(self, create_flight: Callable[[], SlotFlight]):
         self._create_flight = create_flight
+        self._events: list[dict[str, Any]] = []
+        self._final_object: Any | None = None
+        self._consumed = False
+        self._running = False
 
     async def events(self):
-        async for event in self._create_flight().run():
+        async for event in self._consume_run():
             yield event
 
     async def completed_slots(self):
-        async for event in self.events():
+        async for event in self._consume_run():
             if event["type"] == "slot-complete":
                 yield CompletedSlot(
                     slot=event["slot"],
@@ -47,10 +51,33 @@ class SlotObjectStream:
                 )
 
     async def final_object(self):
-        async for event in self.events():
+        if self._final_object is not None:
+            return self._final_object
+
+        async for event in self._consume_run():
             if event["type"] == "done":
                 return event["state"]
         raise RuntimeError("Slot object stream ended without a final object.")
+
+    async def _consume_run(self):
+        if self._consumed:
+            for event in self._events:
+                yield event
+            return
+
+        if self._running:
+            raise RuntimeError("Slot object stream already has a live consumer.")
+
+        self._running = True
+        try:
+            async for event in self._create_flight().run():
+                self._events.append(event)
+                if event["type"] == "done":
+                    self._final_object = event["state"]
+                yield event
+        finally:
+            self._running = False
+            self._consumed = True
 
 
 def slot_object(
