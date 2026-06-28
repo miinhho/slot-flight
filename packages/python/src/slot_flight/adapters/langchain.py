@@ -62,15 +62,32 @@ def _chunk_text(chunk: Any) -> str:
         return chunk
 
     content = getattr(chunk, "content", None)
+    text = _content_text(content)
+    if text:
+        return text
+
+    if isinstance(chunk, dict):
+        return _content_text(chunk.get("content", ""))
+    return ""
+
+
+def _content_text(content: Any) -> str:
     if isinstance(content, str):
         return content
+
     if isinstance(content, list):
-        return "".join(
-            part.get("text", "")
-            for part in content
-            if isinstance(part, dict) and isinstance(part.get("text"), str)
-        )
-    if isinstance(chunk, dict):
-        value = chunk.get("content", "")
-        return value if isinstance(value, str) else ""
+        return "".join(_content_part_text(part) for part in content)
+
     return ""
+
+
+def _content_part_text(part: Any) -> str:
+    if isinstance(part, str):
+        return part
+
+    if isinstance(part, dict):
+        text = part.get("text", "")
+        return text if isinstance(text, str) else ""
+
+    text = getattr(part, "text", "")
+    return text if isinstance(text, str) else ""
