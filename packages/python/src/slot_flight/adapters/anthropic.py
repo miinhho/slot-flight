@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import inspect
-from collections.abc import Iterable, Sequence
+from collections.abc import Sequence
 from typing import Any
 
+from slot_flight._streams import close_stream, iterate_stream
 from slot_flight.object import (
     SlotObjectOutput,
     SlotObjectStream,
@@ -30,14 +31,18 @@ def stream_slot_object(
         ]
 
         if hasattr(client.messages, "stream"):
-            async for text in _stream_text_context(
+            texts = _stream_text_context(
                 client.messages.stream(
                     model=model,
                     messages=request_messages,
                     **params,
                 )
-            ):
-                yield text
+            )
+            try:
+                async for text in texts:
+                    yield text
+            finally:
+                await close_stream(texts)
             return
 
         stream = client.messages.create(
@@ -49,10 +54,14 @@ def stream_slot_object(
         if inspect.isawaitable(stream):
             stream = await stream
 
-        async for event in _iterate(stream):
-            text = _event_text(event)
-            if text:
-                yield text
+        events = _iterate(stream)
+        try:
+            async for event in events:
+                text = _event_text(event)
+                if text:
+                    yield text
+        finally:
+            await close_stream(events)
 
     return create_slot_object_stream(output=output, generate=generate)
 
@@ -72,15 +81,15 @@ async def _stream_text_context(context: Any):
 
 
 async def _iterate(stream: Any):
-    if hasattr(stream, "__aiter__"):
-        async for item in stream:
+    items = iterate_stream(
+        stream,
+        error_message="Anthropic stream must be iterable or async iterable.",
+    )
+    try:
+        async for item in items:
             yield item
-        return
-    if isinstance(stream, Iterable):
-        for item in stream:
-            yield item
-        return
-    raise TypeError("Anthropic stream must be iterable or async iterable.")
+    finally:
+        await close_stream(items)
 
 
 def _event_text(event: Any) -> str:

@@ -101,6 +101,22 @@ class SlotFlightTest(unittest.IsolatedAsyncioTestCase):
         retry = next(event for event in events if event["type"] == "slot-retry")
         self.assertIsInstance(retry["error"], SlotFlightJsonParseError)
 
+    async def test_closes_source_stream_when_consumer_stops_early(self):
+        source = CloseableAsyncItems(["<1>Hello"])
+
+        async def generate(request):
+            return source
+
+        iterator = SlotFlight(
+            slots=[SlotDefinition("title", validate=_non_empty_string)],
+            generate=generate,
+        ).run().__aiter__()
+
+        await iterator.__anext__()
+        await iterator.aclose()
+
+        self.assertTrue(source.closed)
+
 
 def _non_empty_string(value):
     if not isinstance(value, str) or value == "":
@@ -112,6 +128,26 @@ def _list_length(value, length):
     if not isinstance(value, list) or len(value) != length:
         raise ValueError(f"expected list of length {length}")
     return value
+
+
+class CloseableAsyncItems:
+    def __init__(self, items):
+        self._items = items
+        self._index = 0
+        self.closed = False
+
+    def __aiter__(self):
+        return self
+
+    async def __anext__(self):
+        if self._index >= len(self._items):
+            raise StopAsyncIteration
+        item = self._items[self._index]
+        self._index += 1
+        return item
+
+    async def aclose(self):
+        self.closed = True
 
 
 if __name__ == "__main__":

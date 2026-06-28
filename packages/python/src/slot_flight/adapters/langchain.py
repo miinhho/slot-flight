@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any
 
+from slot_flight._streams import close_stream, iterate_stream
 from slot_flight.object import (
     SlotObjectOutput,
     SlotObjectStream,
@@ -22,17 +23,33 @@ def stream_slot_object(
         request_messages = [*messages, ("human", request.prompt)]
 
         if hasattr(runnable, "astream"):
-            async for chunk in runnable.astream(request_messages, **params):
-                text = _chunk_text(chunk)
-                if text:
-                    yield text
+            stream = runnable.astream(request_messages, **params)
+            chunks = iterate_stream(
+                stream,
+                error_message="LangChain stream must be iterable or async iterable.",
+            )
+            try:
+                async for chunk in chunks:
+                    text = _chunk_text(chunk)
+                    if text:
+                        yield text
+            finally:
+                await close_stream(chunks)
             return
 
         if hasattr(runnable, "stream"):
-            for chunk in runnable.stream(request_messages, **params):
-                text = _chunk_text(chunk)
-                if text:
-                    yield text
+            stream = runnable.stream(request_messages, **params)
+            chunks = iterate_stream(
+                stream,
+                error_message="LangChain stream must be iterable or async iterable.",
+            )
+            try:
+                async for chunk in chunks:
+                    text = _chunk_text(chunk)
+                    if text:
+                        yield text
+            finally:
+                await close_stream(chunks)
             return
 
         raise TypeError("LangChain runnable must expose stream() or astream().")

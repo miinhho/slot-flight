@@ -3,10 +3,11 @@ from __future__ import annotations
 import copy
 import inspect
 import json
-from collections.abc import AsyncIterable, Callable
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, cast
 
+from ._streams import close_stream, iterate_stream
 from .errors import (
     SlotFlightConfigurationError,
     SlotFlightJsonParseError,
@@ -70,40 +71,50 @@ class SlotFlight:
                 stream = self._generate(request)
                 if inspect.isawaitable(stream):
                     stream = await stream
-                stream = cast(AsyncIterable[str], stream)
-                async for chunk in stream:
-                    for event in parser.push(chunk):
-                        if event.type == "slot-start":
-                            yield {
-                                "type": "slot-start",
-                                "slot": event.slot,
-                                "attempt": attempts[event.slot],
-                                "state": copy.deepcopy(state),
-                            }
-                        elif event.type == "slot-delta":
-                            yield {
-                                "type": "slot-delta",
-                                "slot": event.slot,
-                                "attempt": attempts[event.slot],
-                                "delta": event.delta,
-                                "value": event.value,
-                                "state": copy.deepcopy(state),
-                            }
-                        elif event.type == "slot-complete":
-                            slot = slots_by_path[event.slot]
-                            try:
-                                value = _parse_slot_value(slot.definition, event.value)
-                                set_path_value(state, event.slot, value)
-                                completed.add(event.slot)
+                chunks = iterate_stream(
+                    stream,
+                    error_message="Slot generator must return an iterable stream.",
+                )
+                try:
+                    async for chunk in chunks:
+                        chunk = cast(str, chunk)
+                        for event in parser.push(chunk):
+                            if event.type == "slot-start":
                                 yield {
-                                    "type": "slot-complete",
+                                    "type": "slot-start",
                                     "slot": event.slot,
                                     "attempt": attempts[event.slot],
-                                    "value": value,
                                     "state": copy.deepcopy(state),
                                 }
-                            except Exception as error:  # noqa: BLE001
-                                failures[event.slot] = _validation_error(error)
+                            elif event.type == "slot-delta":
+                                yield {
+                                    "type": "slot-delta",
+                                    "slot": event.slot,
+                                    "attempt": attempts[event.slot],
+                                    "delta": event.delta,
+                                    "value": event.value,
+                                    "state": copy.deepcopy(state),
+                                }
+                            elif event.type == "slot-complete":
+                                slot = slots_by_path[event.slot]
+                                try:
+                                    value = _parse_slot_value(
+                                        slot.definition,
+                                        event.value,
+                                    )
+                                    set_path_value(state, event.slot, value)
+                                    completed.add(event.slot)
+                                    yield {
+                                        "type": "slot-complete",
+                                        "slot": event.slot,
+                                        "attempt": attempts[event.slot],
+                                        "value": value,
+                                        "state": copy.deepcopy(state),
+                                    }
+                                except Exception as error:  # noqa: BLE001
+                                    failures[event.slot] = _validation_error(error)
+                finally:
+                    await close_stream(chunks)
                 parser.finish()
             except SlotFlightSlotProtocolError as error:
                 if not error.retryable:

@@ -41,6 +41,25 @@ class AdapterTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(created["temperature"], 0.2)
         self.assertIn("OUTPUT CONTRACT", created["messages"][-1]["content"])
 
+    async def test_openai_adapter_closes_provider_stream_on_early_stop(self):
+        provider_stream = CloseableAsyncItems(
+            [{"choices": [{"delta": {"content": "<1>Hello"}}]}]
+        )
+        client = FakeOpenAIClient(provider_stream)
+
+        stream = openai_stream(
+            client=client,
+            model="test-model",
+            messages=[{"role": "user", "content": "Classify this."}],
+            output=slot_object(Summary),
+        )
+        iterator = stream.events().__aiter__()
+
+        await iterator.__anext__()
+        await iterator.aclose()
+
+        self.assertTrue(provider_stream.closed)
+
     async def test_anthropic_adapter_streams_slot_object(self):
         client = FakeAnthropicClient(
             [
@@ -85,6 +104,25 @@ class AdapterTest(unittest.IsolatedAsyncioTestCase):
         created = self.assert_created(client.messages.created)
         self.assertEqual(created["max_tokens"], 256)
 
+    async def test_anthropic_adapter_exits_native_stream_context_on_early_stop(self):
+        client = FakeAnthropicStreamClient(["<1>Hello"])
+
+        stream = anthropic_stream(
+            client=client,
+            model="claude-test",
+            messages=[{"role": "user", "content": "Classify this."}],
+            output=slot_object(Summary),
+        )
+        iterator = stream.events().__aiter__()
+
+        await iterator.__anext__()
+        await iterator.aclose()
+
+        context = client.messages.context
+        self.assertIsNotNone(context)
+        assert context is not None
+        self.assertTrue(context.exited)
+
     async def test_langchain_adapter_streams_slot_object(self):
         runnable = FakeRunnable(["<1>Hello</1>", '<2>["a","b"]</2>'])
 
@@ -118,6 +156,22 @@ class AdapterTest(unittest.IsolatedAsyncioTestCase):
         messages = self.assert_messages(runnable.messages)
         self.assertIn("OUTPUT CONTRACT", messages[-1][1])
 
+    async def test_langchain_adapter_closes_sync_stream_on_early_stop(self):
+        source = CloseableIterator(["<1>Hello"])
+        runnable = FakeSyncRunnable(source)
+
+        stream = langchain_stream(
+            runnable=runnable,
+            messages=[("human", "Classify this.")],
+            output=slot_object(Summary),
+        )
+        iterator = stream.events().__aiter__()
+
+        await iterator.__anext__()
+        await iterator.aclose()
+
+        self.assertTrue(source.closed)
+
     def assert_created(self, value: dict[str, Any] | None) -> dict[str, Any]:
         self.assertIsNotNone(value)
         assert value is not None
@@ -147,6 +201,8 @@ class FakeCompletions:
 
     async def create(self, **kwargs):
         self._owner.created = kwargs
+        if hasattr(self._chunks, "__aiter__"):
+            return self._chunks
         return AsyncItems(self._chunks)
 
 
@@ -174,20 +230,24 @@ class FakeStreamMessages:
     def __init__(self, texts):
         self._texts = texts
         self.created: dict[str, Any] | None = None
+        self.context: FakeTextStreamContext | None = None
 
     def stream(self, **kwargs):
         self.created = kwargs
-        return FakeTextStreamContext(self._texts)
+        self.context = FakeTextStreamContext(self._texts)
+        return self.context
 
 
 class FakeTextStreamContext:
     def __init__(self, texts):
         self.text_stream = texts
+        self.exited = False
 
     def __enter__(self):
         return self
 
     def __exit__(self, exc_type, exc, traceback):
+        self.exited = True
         return False
 
 
@@ -209,6 +269,8 @@ class FakeSyncRunnable:
 
     def stream(self, messages, **kwargs):
         self.messages = messages
+        if hasattr(self._chunks, "close"):
+            return self._chunks
         return iter(self._chunks)
 
 
@@ -219,6 +281,41 @@ class AsyncItems:
     async def __aiter__(self):
         for item in self._items:
             yield item
+
+
+class CloseableAsyncItems:
+    def __init__(self, items):
+        self._items = items
+        self._index = 0
+        self.closed = False
+
+    def __aiter__(self):
+        return self
+
+    async def __anext__(self):
+        if self._index >= len(self._items):
+            raise StopAsyncIteration
+        item = self._items[self._index]
+        self._index += 1
+        return item
+
+    async def aclose(self):
+        self.closed = True
+
+
+class CloseableIterator:
+    def __init__(self, items):
+        self._items = iter(items)
+        self.closed = False
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        return next(self._items)
+
+    def close(self):
+        self.closed = True
 
 
 if __name__ == "__main__":

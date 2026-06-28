@@ -7,6 +7,7 @@ from typing import Any, Literal, get_args, get_origin
 
 from pydantic import BaseModel, TypeAdapter
 
+from ._streams import close_stream
 from .engine import SlotFlight
 from .errors import SlotFlightConfigurationError
 from .types import Prompt, SlotDefinition, SlotGenerator, SlotMode
@@ -37,18 +38,26 @@ class SlotObjectStream:
         self._running = False
 
     async def events(self):
-        async for event in self._consume_run():
-            yield event
+        events = self._consume_run()
+        try:
+            async for event in events:
+                yield event
+        finally:
+            await close_stream(events)
 
     async def completed_slots(self):
-        async for event in self._consume_run():
-            if event["type"] == "slot-complete":
-                yield CompletedSlot(
-                    slot=event["slot"],
-                    value=event["value"],
-                    state=event["state"],
-                    attempt=event["attempt"],
-                )
+        events = self._consume_run()
+        try:
+            async for event in events:
+                if event["type"] == "slot-complete":
+                    yield CompletedSlot(
+                        slot=event["slot"],
+                        value=event["value"],
+                        state=event["state"],
+                        attempt=event["attempt"],
+                    )
+        finally:
+            await close_stream(events)
 
     async def final_object(self):
         if self._final_object is not None:
@@ -69,13 +78,15 @@ class SlotObjectStream:
             raise RuntimeError("Slot object stream already has a live consumer.")
 
         self._running = True
+        events = self._create_flight().run()
         try:
-            async for event in self._create_flight().run():
+            async for event in events:
                 self._events.append(event)
                 if event["type"] == "done":
                     self._final_object = event["state"]
                 yield event
         finally:
+            await close_stream(events)
             self._running = False
             self._consumed = True
 

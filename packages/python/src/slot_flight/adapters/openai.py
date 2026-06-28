@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import inspect
-from collections.abc import Iterable, Sequence
+from collections.abc import Sequence
 from typing import Any
 
+from slot_flight._streams import close_stream, iterate_stream
 from slot_flight.object import (
     SlotObjectOutput,
     SlotObjectStream,
@@ -37,21 +38,17 @@ def stream_slot_object(
         if inspect.isawaitable(stream):
             stream = await stream
 
-        if hasattr(stream, "__aiter__"):
-            async for chunk in stream:
+        chunks = iterate_stream(
+            stream,
+            error_message="OpenAI stream must be iterable or async iterable.",
+        )
+        try:
+            async for chunk in chunks:
                 text = _chunk_text(chunk)
                 if text:
                     yield text
-            return
-
-        if isinstance(stream, Iterable):
-            for chunk in stream:
-                text = _chunk_text(chunk)
-                if text:
-                    yield text
-            return
-
-        raise TypeError("OpenAI stream must be iterable or async iterable.")
+        finally:
+            await close_stream(chunks)
 
     return create_slot_object_stream(output=output, generate=generate)
 
