@@ -53,3 +53,11 @@ jobs:
       - name: Test
         working-directory: packages/python
         run: uv run pytest
+
+      - name: Build distribution
+        working-directory: packages/python
+        run: uv build
+
+      - name: Check distribution metadata
+        working-directory: packages/python
+        run: uv run twine check dist/*

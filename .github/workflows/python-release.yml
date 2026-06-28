@@ -48,6 +48,10 @@ jobs:
         working-directory: packages/python
         run: uv build
 
+      - name: Check distribution metadata
+        working-directory: packages/python
+        run: uv run twine check dist/*
+
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
         with:

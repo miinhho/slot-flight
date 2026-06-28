@@ -11,9 +11,25 @@ requires-python = ">=3.10"
 license = "MIT"
 authors = [{ name = "slot-flight contributors" }]
 keywords = ["llm", "json", "streaming", "slot-generation"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Software Development :: Libraries :: Python Modules",
+  "Typing :: Typed"
+]
 dependencies = [
   "pydantic>=2,<3"
 ]
+
+[project.urls]
+Homepage = "https://github.com/miinhho/slot-flight"
+Repository = "https://github.com/miinhho/slot-flight"
+Issues = "https://github.com/miinhho/slot-flight/issues"
 
 [project.optional-dependencies]
 anthropic = ["anthropic>=0.34"]
@@ -28,10 +44,14 @@ adapters = [
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+slot_flight = ["py.typed"]
+
 [dependency-groups]
 dev = [
   "pytest>=8",
   "ruff>=0.8",
+  "twine>=6",
   "ty>=0.0.1a20"
 ]
 
