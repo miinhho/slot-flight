@@ -144,7 +144,27 @@ The shared protocol is documented in
 ## Development
 
 ```sh
+cd packages/typescript
 bun run test
 bun run typecheck
 bun run build
 ```
+
+Language-specific checks:
+
+```sh
+cd packages/typescript && bun run test
+PYTHONPATH=packages/python/src python3 -m unittest discover -s packages/python/tests
+```
+
+CI is split by changed paths:
+
+- TypeScript CI runs for `packages/typescript/**`, shared protocol docs, and
+  TypeScript workflow changes.
+- Python CI runs for `packages/python/**`, shared protocol docs, and Python
+  workflow changes.
+
+Release tags are language-scoped:
+
+- `typescript-v*` publishes `packages/typescript` to npm.
+- `python-v*` builds and publishes `packages/python` to PyPI.

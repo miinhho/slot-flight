@@ -1,19 +1,7 @@
-node_modules/
-dist/
-coverage/
-.npm-cache/
-__pycache__/
-*.py[cod]
+/.env
+/.env.*
+!/.env.example
 
-.env
-.env.*
-!.env.example
-
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-
-.DS_Store
-.idea/
-.vscode/
+/.DS_Store
+/.idea/
+/.vscode/
