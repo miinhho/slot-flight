@@ -113,33 +113,7 @@ Python package details and provider examples live in `packages/python`.
 The shared protocol is documented in
 `docs/protocol/slot-frame-protocol.md`.
 
-## Development
+## Contributing
 
-```sh
-cd packages/typescript
-bun run test
-bun run typecheck
-bun run build
-```
-
-Language-specific checks:
-
-```sh
-(cd packages/typescript && bun run test)
-(cd packages/python && uv sync --all-extras --dev)
-(cd packages/python && uv run ruff check .)
-(cd packages/python && uv run ty check)
-(cd packages/python && uv run pytest)
-```
-
-CI is split by changed paths:
-
-- TypeScript CI runs for `packages/typescript/**`, shared protocol docs, and
-  TypeScript workflow changes.
-- Python CI runs for `packages/python/**`, shared protocol docs, and Python
-  workflow changes.
-
-Release tags are language-scoped:
-
-- `typescript-v*` publishes `packages/typescript` to npm.
-- `python-v*` builds and publishes `packages/python` to PyPI.
+Contribution, local verification, CI, and release notes are documented in
+`CONTRIBUTING.md`.
