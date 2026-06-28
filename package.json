@@ -29,12 +29,14 @@
     }
   },
   "files": [
-    "dist"
+    "dist/**/*"
   ],
   "publishConfig": {
     "access": "public"
   },
   "scripts": {
+    "bench:leak": "bun --expose-gc bench/leak.ts",
+    "bench:perf": "bun bench/perf.ts",
     "build": "rm -rf dist && tsc -p tsconfig.build.json",
     "check": "biome check .",
     "compare:ollama": "bun scripts/compare-ollama.ts",
