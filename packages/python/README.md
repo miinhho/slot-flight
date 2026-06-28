@@ -45,7 +45,7 @@ result = await stream.final_object()
 ```sh
 uv run --extra openai examples/openai_compatible.py
 uv run --extra anthropic examples/anthropic_sdk.py
-uv run --extra langchain examples/langchain.py
+uv run --extra langchain examples/langchain_runnable.py
 ```
 
 The OpenAI example works with OpenAI-compatible endpoints such as NVIDIA NIM:
