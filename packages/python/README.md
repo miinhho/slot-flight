@@ -5,7 +5,7 @@ Python SDK for slot-wise LLM value streaming with server-owned JSON assembly.
 This package implements the same slot frame protocol used by the TypeScript SDK.
 The core engine is provider-independent, and the public object API is Pydantic
 first. Provider/framework adapters are available for OpenAI, Anthropic, and
-LangChain.
+LangChain. Runnable examples live in `examples/`.
 
 ```py
 from openai import AsyncOpenAI
@@ -29,6 +29,14 @@ stream = stream_slot_object(
 )
 
 result = await stream.final_object()
+```
+
+## Examples
+
+```sh
+uv run --extra openai examples/openai.py
+uv run --extra anthropic examples/anthropic.py
+uv run --extra langchain examples/langchain.py
 ```
 
 ## Development

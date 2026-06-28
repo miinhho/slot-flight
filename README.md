@@ -106,7 +106,7 @@ class Triage(BaseModel):
 output = slot_object(Triage)
 ```
 
-Python package details live in `packages/python`.
+Python package details and provider examples live in `packages/python`.
 
 ## Protocol
 
