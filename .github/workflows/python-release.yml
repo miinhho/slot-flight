@@ -36,6 +36,10 @@ jobs:
         working-directory: packages/python
         run: uv run ruff check .
 
+      - name: Typecheck
+        working-directory: packages/python
+        run: uv run ty check
+
       - name: Test
         working-directory: packages/python
         run: uv run pytest

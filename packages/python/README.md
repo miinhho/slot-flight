@@ -36,6 +36,7 @@ result = await stream.final_object()
 ```sh
 uv sync --all-extras --dev
 uv run ruff check .
+uv run ty check
 uv run pytest
 uv build
 ```

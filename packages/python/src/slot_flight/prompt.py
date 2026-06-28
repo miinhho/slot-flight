@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from textwrap import dedent
+from typing import cast
 
 from .types import Prompt, SlotFlightRequest, SlotFrameRequest
 
@@ -13,10 +15,10 @@ def create_slot_frame_prompt(
         slots=slots,
         attempt=max(slot.attempt for slot in slots),
     )
-    if callable(prompt):
-        return prompt(request)
     if isinstance(prompt, str):
         return prompt
+    if prompt is not None:
+        return cast("Callable[[SlotFlightRequest], str]", prompt)(request)
     return default_slot_frame_prompt(slots)
 
 

@@ -128,6 +128,7 @@ Language-specific checks:
 (cd packages/typescript && bun run test)
 (cd packages/python && uv sync --all-extras --dev)
 (cd packages/python && uv run ruff check .)
+(cd packages/python && uv run ty check)
 (cd packages/python && uv run pytest)
 ```
 

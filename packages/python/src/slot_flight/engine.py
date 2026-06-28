@@ -3,8 +3,9 @@ from __future__ import annotations
 import copy
 import inspect
 import json
+from collections.abc import AsyncIterable, Callable
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 from .errors import (
     SlotFlightConfigurationError,
@@ -69,6 +70,7 @@ class SlotFlight:
                 stream = self._generate(request)
                 if inspect.isawaitable(stream):
                     stream = await stream
+                stream = cast(AsyncIterable[str], stream)
                 async for chunk in stream:
                     for event in parser.push(chunk):
                         if event.type == "slot-start":
@@ -185,11 +187,16 @@ def _create_slot_frame_requests(
             mode=slot.definition.mode,
         )
         prompt = slot.definition.prompt
+        prompt_text = (
+            prompt
+            if isinstance(prompt, str)
+            else cast("Callable[[SlotFrameRequest], str]", prompt)(request)
+        )
         request = SlotFrameRequest(
             id=request.id,
             path=request.path,
             template_path=request.template_path,
-            prompt=prompt(request) if callable(prompt) else prompt,
+            prompt=prompt_text,
             attempt=request.attempt,
             mode=request.mode,
         )

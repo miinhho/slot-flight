@@ -31,7 +31,8 @@ where = ["src"]
 [dependency-groups]
 dev = [
   "pytest>=8",
-  "ruff>=0.8"
+  "ruff>=0.8",
+  "ty>=0.0.1a20"
 ]
 
 [tool.pytest.ini_options]
@@ -46,3 +47,6 @@ select = ["E", "F", "I", "UP"]
 
 [tool.ruff.lint.per-file-ignores]
 "src/slot_flight/prompt.py" = ["E501"]
+
+[tool.ty.environment]
+python-version = "3.10"
