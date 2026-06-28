@@ -3,9 +3,9 @@
 Slot-wise LLM value streaming with server-owned JSON assembly.
 
 `slot-flight` does not ask the model to stream a valid JSON document. The model
-streams compact slot frames, and the server maps those frame ids to JSON paths,
-validates each value with Zod, retries failed slots, and assembles the final
-object itself.
+streams compact slot frames, and an SDK maps those frame ids to JSON paths,
+validates each value, retries failed slots, and assembles the final object
+itself.
 
 ```text
 <1>Alice</1>
@@ -13,7 +13,18 @@ object itself.
 <3>Builds streaming JSON assembly engines.</3>
 ```
 
-## Install
+## Repository Layout
+
+This repository is organized as a multi-language SDK workspace:
+
+- `docs/protocol`: language-neutral slot frame protocol
+- `packages/typescript`: TypeScript SDK and provider adapters
+- `packages/python`: Python SDK core
+
+Each SDK should keep the same protocol behavior while using language-native
+schema and provider integration patterns.
+
+## TypeScript
 
 ```sh
 bun add slot-flight zod
@@ -26,8 +37,6 @@ bun add openai
 # or
 bun add ai @ai-sdk/openai
 ```
-
-## Quick Start
 
 Define the output shape with Zod. Every generated field is registered through
 `.describe()`, which becomes the model-facing slot instruction.
@@ -76,167 +85,66 @@ for await (const slot of stream.completedSlotStream) {
 const finalObject = await stream.finalObject;
 ```
 
-## Schema Contract
+TypeScript-specific docs and examples live in
+`packages/typescript`.
 
-`slotObject()` uses the Zod schema as the single source of truth.
+## Python
 
-- Fields with `.describe()` become slots.
-- Nested objects without `.describe()` are traversed until described fields are
-  found.
-- Described arrays and described objects become JSON slots, so coordinated
-  structured values are generated and validated as one value.
-- Fields without `.describe()` are rejected instead of silently inventing
-  prompts.
+The Python SDK currently provides the provider-independent core engine. It
+accepts an async generator that yields text chunks, then parses slot frames,
+validates values, retries failed slots, and emits progressive events.
 
-```ts
-const output = slotObject({
-  schema: z.object({
-    title: z.string().min(1).describe("Write a short title."),
-    metadata: z.object({
-      audience: z.string().describe("Write the intended audience.")
-    }),
-    tags: z
-      .array(z.string().min(1))
-      .length(3)
-      .describe("Write a JSON array of exactly 3 short tags.")
-  })
-});
+```py
+from slot_flight import SlotDefinition, SlotFlight
+
+
+def non_empty_string(value):
+    if not isinstance(value, str) or value == "":
+        raise ValueError("expected non-empty string")
+    return value
+
+
+async def generate(request):
+    values = {
+        "summary": "Streaming JSON assembly without model-owned JSON.",
+        "tags": '["llm", "json", "streaming"]',
+    }
+    for slot in request.slots:
+        yield f"<{slot.id}>{values[slot.path]}</{slot.id}>"
+
+
+flight = SlotFlight(
+    slots=[
+        SlotDefinition(
+            path="summary",
+            prompt="Write one concise operational summary.",
+            validate=non_empty_string,
+        ),
+        SlotDefinition(
+            path="tags",
+            prompt="Write a JSON array of exactly 3 short tags.",
+            mode="json",
+            validate=lambda value: value,
+        ),
+    ],
+    generate=generate,
+)
+
+async for event in flight.run():
+    print(event)
 ```
 
-Text slots are treated as raw values. JSON slots are parsed with `JSON.parse()`
-before Zod validation.
+Python package details live in `packages/python`.
 
-## Adapters
+## Protocol
 
-### OpenAI-Compatible
+The shared protocol is documented in
+`docs/protocol/slot-frame-protocol.md`.
 
-```ts
-import { streamSlotObject } from "slot-flight/adapters/openai";
+## Development
 
-const stream = streamSlotObject({
-  client: openai,
-  model: "openai/gpt-oss-20b",
-  messages,
-  output
-});
+```sh
+bun run test
+bun run typecheck
+bun run build
 ```
-
-The OpenAI adapter keeps the call shaped like a normal
-`chat.completions.create` request. It forces `stream: true`, appends the
-generated slot-frame prompt as the final message, passes `AbortSignal` into the
-SDK call, and extracts `choices[].delta.content`.
-
-Optional client enhancer:
-
-```ts
-import { withSlotFlight } from "slot-flight/adapters/openai";
-
-const client = withSlotFlight(openai);
-const stream = client.chat.completions.streamSlotObject({
-  model: "openai/gpt-oss-20b",
-  messages,
-  output
-});
-```
-
-### Vercel AI SDK
-
-```ts
-import { streamText } from "ai";
-import { streamSlotObject } from "slot-flight/adapters/vercel";
-
-const stream = streamSlotObject({
-  streamText,
-  model,
-  messages,
-  output
-});
-```
-
-The Vercel adapter keeps `streamText` as the generation primitive and consumes
-its `textStream`.
-
-### Generic Streams
-
-For any SDK that returns async chunks:
-
-```ts
-import { createChunkStreamGenerator } from "slot-flight/adapters/stream";
-
-const generate = createChunkStreamGenerator({
-  stream: (request) => someSdk.stream({ prompt: request.prompt }),
-  text: (chunk) => chunk.text
-});
-```
-
-Advanced engine usage is available from `slot-flight/core` when you want to
-provide your own `SlotGenerator` directly.
-
-## Stream Outputs
-
-`streamSlotObject()` returns a `SlotObjectStream`:
-
-- `completedSlotStream`: validated slot values, one event per completed slot.
-- `finalObject`: final Zod-validated object.
-- `toResponse()`: SSE or NDJSON over completed slot output.
-- `debug`: partial snapshots and low-level slot events.
-
-Each `SlotObjectStream` owns one live model run. Choose one live view per run:
-`completedSlotStream`, `toResponse()`, one `debug` stream, or `finalObject` by
-itself. After a live view finishes, `finalObject` can still be awaited for the
-validated result.
-
-For HTTP handlers:
-
-```ts
-export async function POST() {
-  const stream = streamSlotObject({
-    client: openai,
-    model: "openai/gpt-oss-20b",
-    messages,
-    output
-  });
-
-  return stream.toResponse();
-}
-```
-
-`toResponse()` defaults to SSE over completed slots. Use
-`stream.toResponse({ format: "ndjson" })` for newline-delimited JSON.
-
-Low-level events are intentionally behind `debug`:
-
-```ts
-for await (const event of stream.debug.slotEventStream) {
-  console.log(event.type);
-}
-```
-
-## Reliability Scope
-
-`slot-flight` owns reliability only where it has slot-level information:
-
-- retry failed or missing slots after parsing and Zod validation
-- retry recoverable slot protocol failures such as an unfinished frame
-- cancel one frame stream through `AbortSignal`
-
-It does not implement provider retry policy, backoff, rate limiting, queues,
-failover, or agent orchestration. Leave those in your LLM SDK or application
-workflow.
-
-## Custom Errors
-
-Custom error classes are exported from `slot-flight/core` for consumers that
-need to branch on engine failures:
-
-```ts
-import {
-  SlotFlightError,
-  SlotFlightJsonParseError,
-  SlotFlightValidationError
-} from "slot-flight/core";
-```
-
-Use these for slot-level failures reported by the engine. Adapter shape errors
-remain normal `TypeError`s, caller cancellation remains an `AbortError`, and
-provider stream failures are surfaced without provider retry policy.

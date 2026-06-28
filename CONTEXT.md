@@ -84,8 +84,12 @@ The slot module is the implementation locality for slot paths, frame request con
 
 ### Public Surface
 
-The public surface is intentionally split by depth. The root export is the happy path for `slotObject` and stream result types. Adapter subpaths expose provider-specific helpers. `core` exposes the low-level engine for advanced use. Slot parser, path, protocol, and execution modules are internal implementation boundaries.
+The public surface is intentionally split by language and depth. The repository root owns cross-language protocol documentation and workspace scripts. `packages/typescript` publishes the TypeScript SDK: the root export is the happy path for `slotObject` and stream result types, adapter subpaths expose provider-specific helpers, and `core` exposes the low-level engine for advanced use. `packages/python` publishes the Python SDK core around language-native `SlotDefinition` validators. Slot parser, path, protocol, and execution modules are internal implementation boundaries inside each SDK.
 
 ### Vercel AI SDK Adapter
 
 The Vercel AI SDK adapter keeps `streamText` as the generation primitive. Callers pass `streamText` plus normal AI SDK stream text parameters and `output: slotObject(...)`; the adapter appends the slot protocol prompt and consumes `textStream`.
+
+### Language SDK
+
+A language SDK is one implementation of the shared slot frame protocol. Each SDK should keep slot path expansion, frame parsing, default prompt semantics, JSON-mode parsing, validation, retry behavior, and provider adapter boundaries equivalent while using language-native schema and packaging conventions.
