@@ -1,8 +1,16 @@
 import { SlotFlightStreamError } from "../../errors.js";
 import type { SlotFlightEvent } from "../../types.js";
 
+export type SlotObjectStreamConsumer =
+  | "completedSlotStream"
+  | "partialObjectStream"
+  | "slotEventStream"
+  | "toReadableStream"
+  | "toResponse"
+  | "finalObject";
+
 export class SlotObjectRun {
-  private consumedBy: string | undefined;
+  private consumedBy: SlotObjectStreamConsumer | undefined;
   private sourceIterator: AsyncIterator<SlotFlightEvent> | undefined;
   private resolveFinal!: (value: unknown) => void;
   private rejectFinal!: (error: unknown) => void;
@@ -27,7 +35,7 @@ export class SlotObjectRun {
     return this.finalObjectPromise;
   }
 
-  events(consumer: string): AsyncGenerator<SlotFlightEvent> {
+  events(consumer: SlotObjectStreamConsumer): AsyncGenerator<SlotFlightEvent> {
     // SlotObjectRun deliberately has no event history or fan-out. A run has one
     // live consumer so slow views cannot force unbounded buffering.
     this.claim(consumer);
@@ -53,7 +61,7 @@ export class SlotObjectRun {
     })();
   }
 
-  private claim(consumer: string): void {
+  private claim(consumer: SlotObjectStreamConsumer): void {
     if (this.consumedBy !== undefined) {
       throw new SlotFlightStreamError(
         `SlotObjectStream is already being consumed by ${this.consumedBy}. Choose one stream view per run.`

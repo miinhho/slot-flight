@@ -78,7 +78,7 @@ describe("SlotObjectStream web output", () => {
     ]);
   });
 
-  it("can expose low-level slot events for debugging", async () => {
+  it("can expose low-level slot events", async () => {
     const generate: SlotGenerator = async function* (request) {
       const slot = firstSlot(request);
       yield `<${slot.id}>ok</${slot.id}>`;
@@ -86,7 +86,7 @@ describe("SlotObjectStream web output", () => {
 
     const stream = slotObjectStreamFromGenerator(generate);
     const body = await new Response(
-      stream.debug.toReadableStream({ source: "events", format: "ndjson" })
+      stream.toReadableStream({ source: "events", format: "ndjson" })
     ).text();
     const eventTypes = body
       .trim()
@@ -127,7 +127,7 @@ describe("SlotObjectStream web output", () => {
 
     expect(started).toBe(false);
 
-    const events = await collectEvents(stream.debug.slotEventStream);
+    const events = await collectEvents(stream.slotEventStream);
 
     expect(started).toBe(true);
     expect(events).toEqual([{ type: "done", state: { status: "ok" } }]);
@@ -158,7 +158,7 @@ describe("SlotObjectStream web output", () => {
 
     await stream.finalObject;
 
-    await expect(collectEvents(stream.debug.slotEventStream)).rejects.toThrow(
+    await expect(collectEvents(stream.slotEventStream)).rejects.toThrow(
       "already being consumed by finalObject"
     );
 
@@ -226,7 +226,7 @@ describe("SlotObjectStream web output", () => {
         cancelled = true;
       }
     });
-    const reader = stream.debug
+    const reader = stream
       .toReadableStream({ source: "events", format: "ndjson" })
       .getReader();
 

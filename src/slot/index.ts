@@ -19,7 +19,6 @@ export {
 export {
   type CompletedSlot,
   createSlotObjectStream,
-  type SlotObjectDebugStream,
   type SlotObjectReadableStreamOptions,
   type SlotObjectResponseOptions,
   type SlotObjectStream,

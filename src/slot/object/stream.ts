@@ -24,18 +24,14 @@ export interface SlotObjectResponseOptions {
   headers?: HeadersInit;
 }
 
-export interface SlotObjectDebugStream<T> {
+export interface SlotObjectStream<T> {
+  readonly completedSlotStream: AsyncIterable<CompletedSlot<T>>;
   readonly partialObjectStream: AsyncIterable<Partial<T>>;
   readonly slotEventStream: AsyncIterable<SlotFlightEvent>;
+  readonly finalObject: Promise<T>;
   toReadableStream(
     options?: SlotObjectReadableStreamOptions
   ): ReadableStream<Uint8Array>;
-}
-
-export interface SlotObjectStream<T> {
-  readonly completedSlotStream: AsyncIterable<CompletedSlot<T>>;
-  readonly finalObject: Promise<T>;
-  readonly debug: SlotObjectDebugStream<T>;
   toResponse(options?: SlotObjectResponseOptions): Response;
 }
 
@@ -56,19 +52,17 @@ export function createSlotObjectStream<T>(
     get finalObject() {
       return run.finalObject as Promise<T>;
     },
-    debug: {
-      partialObjectStream: {
-        [Symbol.asyncIterator]: () =>
-          partialObjectIterator<T>(run.events("debug.partialObjectStream"))
-      },
-      slotEventStream: {
-        [Symbol.asyncIterator]: () => run.events("debug.slotEventStream")
-      },
-      toReadableStream: (options = {}) =>
-        toReadableStream<T>(run.events("debug.toReadableStream"), options, () =>
-          run.cancel()
-        )
+    partialObjectStream: {
+      [Symbol.asyncIterator]: () =>
+        partialObjectIterator<T>(run.events("partialObjectStream"))
     },
+    slotEventStream: {
+      [Symbol.asyncIterator]: () => run.events("slotEventStream")
+    },
+    toReadableStream: (options = {}) =>
+      toReadableStream<T>(run.events("toReadableStream"), options, () =>
+        run.cancel()
+      ),
     toResponse: (options = {}) =>
       toResponse<T>(run.events("toResponse"), options, () => run.cancel())
   };

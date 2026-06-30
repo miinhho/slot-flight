@@ -186,7 +186,7 @@ export function makeBenchCases(): BenchCase[] {
       }
     },
     {
-      name: "debug stream cancel",
+      name: "event stream cancel",
       run: async () => {
         let closed = false;
         let release!: () => void;
@@ -208,7 +208,7 @@ export function makeBenchCases(): BenchCase[] {
         };
 
         const stream = createSlotObjectStream(source(), { cancel: release });
-        const reader = stream.debug
+        const reader = stream
           .toReadableStream({ source: "events", format: "ndjson" })
           .getReader();
         await reader.read();
@@ -216,7 +216,7 @@ export function makeBenchCases(): BenchCase[] {
         await waitFor(() => closed);
         if (!closed) {
           throw new Error(
-            "Expected debug stream cancellation to close source."
+            "Expected event stream cancellation to close source."
           );
         }
       }
