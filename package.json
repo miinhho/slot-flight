@@ -4,7 +4,7 @@
   "description": "Slot-wise LLM generation and server-owned JSON assembly for TypeScript.",
   "repository": {
     "type": "git",
-    "utl": "git+https://github.com/miinhho/slot-flight.git"
+    "url": "git+https://github.com/miinhho/slot-flight.git"
   },
   "packageManager": "bun@1.3.14",
   "type": "module",
