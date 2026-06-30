@@ -1,0 +1,72 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "slot-flight"
+version = "0.1.0"
+description = "Slot-wise LLM generation and server-owned JSON assembly for Python."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+authors = [{ name = "slot-flight contributors" }]
+keywords = ["llm", "json", "streaming", "slot-generation"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Software Development :: Libraries :: Python Modules",
+  "Typing :: Typed"
+]
+dependencies = [
+  "pydantic>=2,<3"
+]
+
+[project.urls]
+Homepage = "https://github.com/miinhho/slot-flight"
+Repository = "https://github.com/miinhho/slot-flight"
+Issues = "https://github.com/miinhho/slot-flight/issues"
+
+[project.optional-dependencies]
+langchain = ["langchain-core>=0.3"]
+openai = ["openai>=1"]
+openai-compatible = ["httpx>=0.28"]
+adapters = [
+  "httpx>=0.28",
+  "langchain-core>=0.3",
+  "openai>=1"
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+slot_flight = ["py.typed"]
+
+[dependency-groups]
+dev = [
+  "pytest>=8",
+  "ruff>=0.8",
+  "twine>=6",
+  "ty>=0.0.1a20"
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+
+[tool.ruff.lint.per-file-ignores]
+"src/slot_flight/prompt.py" = ["E501"]
+
+[tool.ty.environment]
+python-version = "3.10"

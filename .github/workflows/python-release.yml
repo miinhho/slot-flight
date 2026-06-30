@@ -1,0 +1,58 @@
+name: Python Release
+
+on:
+  push:
+    tags:
+      - "python-v*"
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: python-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies
+        working-directory: packages/python
+        run: uv sync --locked --all-extras --dev
+
+      - name: Lint
+        working-directory: packages/python
+        run: uv run ruff check .
+
+      - name: Typecheck
+        working-directory: packages/python
+        run: uv run ty check
+
+      - name: Test
+        working-directory: packages/python
+        run: uv run pytest
+
+      - name: Build distribution
+        working-directory: packages/python
+        run: uv build
+
+      - name: Check distribution metadata
+        working-directory: packages/python
+        run: uv run twine check dist/*
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: packages/python/dist

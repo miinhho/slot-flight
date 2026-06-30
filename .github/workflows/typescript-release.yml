@@ -1,16 +1,16 @@
-name: Release
+name: TypeScript Release
 
 on:
   push:
     tags:
-      - "v*"
+      - "typescript-v*"
 
 permissions:
   contents: read
   id-token: write
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: typescript-release-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -32,19 +32,25 @@ jobs:
           registry-url: https://registry.npmjs.org
 
       - name: Install dependencies
+        working-directory: packages/typescript
         run: bun install --frozen-lockfile
 
       - name: Check formatting and lint
+        working-directory: packages/typescript
         run: bun run check
 
       - name: Typecheck
+        working-directory: packages/typescript
         run: bun run typecheck
 
       - name: Test
-        run: bun test
+        working-directory: packages/typescript
+        run: bun run test
 
       - name: Build
+        working-directory: packages/typescript
         run: bun run build
 
       - name: Publish to npm
+        working-directory: packages/typescript
         run: npm publish --provenance --access public

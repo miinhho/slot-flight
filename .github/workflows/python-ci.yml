@@ -1,0 +1,63 @@
+name: Python CI
+
+on:
+  pull_request:
+    paths:
+      - "packages/python/**"
+      - "docs/protocol/**"
+      - ".github/workflows/python-ci.yml"
+      - ".github/workflows/python-release.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "packages/python/**"
+      - "docs/protocol/**"
+      - ".github/workflows/python-ci.yml"
+      - ".github/workflows/python-release.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: python-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies
+        working-directory: packages/python
+        run: uv sync --locked --all-extras --dev
+
+      - name: Lint
+        working-directory: packages/python
+        run: uv run ruff check .
+
+      - name: Typecheck
+        working-directory: packages/python
+        run: uv run ty check
+
+      - name: Test
+        working-directory: packages/python
+        run: uv run pytest
+
+      - name: Build distribution
+        working-directory: packages/python
+        run: uv build
+
+      - name: Check distribution metadata
+        working-directory: packages/python
+        run: uv run twine check dist/*
