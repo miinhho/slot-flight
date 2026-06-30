@@ -90,6 +90,18 @@ TypeScript-specific docs and examples live in the
 
 ## Python
 
+```sh
+uv add slot-flight
+```
+
+Optional adapter dependencies:
+```sh 
+uv add "slot-flight[openai]"
+uv add "slot-flight[openai-compatible]"
+uv add "slot-flight[langchain]"
+```
+
+
 The Python SDK provides a Pydantic-first object API plus provider/framework
 adapters for the OpenAI SDK, OpenAI-compatible HTTP endpoints, and LangChain.
 
