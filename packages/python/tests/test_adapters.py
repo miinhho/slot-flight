@@ -4,7 +4,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from slot_flight import slot_object
+from slot_flight import SlotFlightStreamError, slot_object
 from slot_flight.adapters.langchain import stream_slot_object as langchain_stream
 from slot_flight.adapters.openai import stream_slot_object as openai_stream
 from slot_flight.adapters.openai_compatible import (
@@ -122,6 +122,72 @@ class AdapterTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(payload["temperature"], 0.2)
         self.assertIn("OUTPUT CONTRACT", payload["messages"][-1]["content"])
 
+    async def test_openai_compatible_adapter_accepts_common_chunk_variants(self):
+        client = FakeOpenAICompatibleClient(
+            [
+                ": keep-alive",
+                'data: {"choices":[{"delta":{}}],"usage":{"prompt_tokens":1}}',
+                'data: {"choices":[{"text":"<1>Hello</1>"}]}',
+                (
+                    'data: {"choices":[{"message":{"content":['
+                    '{"type":"text","text":"<2>[\\"a\\","},'
+                    '" \\"b\\"]</2>"]}}]}'
+                ),
+                "data: [DONE]",
+            ]
+        )
+
+        stream = openai_compatible_stream(
+            client=client,
+            base_url="https://integrate.api.nvidia.com/v1",
+            model="minimaxai/minimax-m3",
+            messages=[{"role": "user", "content": "Classify this."}],
+            output=slot_object(Summary),
+        )
+
+        self.assertEqual(
+            await stream.final_object(),
+            Summary(title="Hello", tags=["a", "b"]),
+        )
+
+    async def test_openai_compatible_adapter_reports_malformed_sse_json(self):
+        client = FakeOpenAICompatibleClient(["data: not-json"])
+
+        stream = openai_compatible_stream(
+            client=client,
+            base_url="https://integrate.api.nvidia.com/v1",
+            model="minimaxai/minimax-m3",
+            messages=[{"role": "user", "content": "Classify this."}],
+            output=slot_object(Summary),
+        )
+
+        with self.assertRaisesRegex(
+            SlotFlightStreamError,
+            "malformed JSON SSE data line",
+        ):
+            await stream.final_object()
+
+    async def test_openai_compatible_adapter_reports_http_error_body(self):
+        client = FakeOpenAICompatibleClient(
+            [],
+            status_code=401,
+            body='{"error":"bad api key"}',
+        )
+
+        stream = openai_compatible_stream(
+            client=client,
+            base_url="https://integrate.api.nvidia.com/v1",
+            model="minimaxai/minimax-m3",
+            messages=[{"role": "user", "content": "Classify this."}],
+            output=slot_object(Summary),
+        )
+
+        with self.assertRaisesRegex(
+            SlotFlightStreamError,
+            'HTTP 401: \\{"error":"bad api key"\\}',
+        ):
+            await stream.final_object()
+
     async def test_langchain_adapter_streams_slot_object(self):
         runnable = FakeRunnable(["<1>Hello</1>", '<2>["a","b"]</2>'])
 
@@ -225,8 +291,10 @@ class FakeCompletions:
 
 
 class FakeOpenAICompatibleClient:
-    def __init__(self, lines):
+    def __init__(self, lines, *, status_code=200, body=""):
         self._lines = lines
+        self._status_code = status_code
+        self._body = body
         self.method: str | None = None
         self.url: str | None = None
         self.headers: dict[str, str] | None = None
@@ -237,12 +305,18 @@ class FakeOpenAICompatibleClient:
         self.url = url
         self.headers = headers
         self.payload = json
-        return FakeOpenAICompatibleResponse(self._lines)
+        return FakeOpenAICompatibleResponse(
+            self._lines,
+            status_code=self._status_code,
+            body=self._body,
+        )
 
 
 class FakeOpenAICompatibleResponse:
-    def __init__(self, lines):
+    def __init__(self, lines, *, status_code=200, body=""):
         self._lines = lines
+        self.status_code = status_code
+        self._body = body
 
     async def __aenter__(self):
         return self
@@ -252,6 +326,9 @@ class FakeOpenAICompatibleResponse:
 
     def raise_for_status(self):
         return None
+
+    async def aread(self):
+        return self._body.encode()
 
     async def aiter_lines(self):
         for line in self._lines:

@@ -1,14 +1,26 @@
-# slot-flight TypeScript
+# TypeScript SDK
 
 TypeScript SDK for slot-wise LLM value streaming with server-owned JSON
 assembly.
 
-Full TypeScript SDK notes live in the
-[TypeScript SDK guide](../../docs/typescript/README.md).
+## Install
 
 ```sh
 bun add slot-flight zod
 ```
+
+Provider SDKs stay in your application:
+
+```sh
+bun add openai
+# or
+bun add ai @ai-sdk/openai
+```
+
+## Object API
+
+Define the output shape with Zod. Every generated field is registered through
+`.describe()`, which becomes the model-facing slot instruction.
 
 ```ts
 import OpenAI from "openai";
@@ -16,11 +28,14 @@ import { z } from "zod";
 import { slotObject } from "slot-flight";
 import { streamSlotObject } from "slot-flight/adapters/openai";
 
-const openai = new OpenAI({ apiKey: process.env.API_KEY });
+const openai = new OpenAI({
+  apiKey: process.env.API_KEY,
+  baseURL: process.env.API_BASE_URL
+});
 
 const stream = streamSlotObject({
   client: openai,
-  model: "gpt-4.1-mini",
+  model: process.env.MODEL ?? "openai/gpt-oss-20b",
   messages: [{ role: "user", content: "Classify this feedback." }],
   output: slotObject({
     schema: z.object({
@@ -39,16 +54,16 @@ for await (const slot of stream.completedSlotStream) {
 const finalObject = await stream.finalObject;
 ```
 
+## Stream Views
+
 `streamSlotObject()` exposes one live model run through several views:
 
-- `completedSlotStream`: validated slot values, one event per completed slot.
-- `slotEventStream`: low-level slot lifecycle events, including raw draft
-  deltas before validation.
-- `partialObjectStream`: draft object snapshots for low-level consumers. Values
-  may include raw, unvalidated slot text before a slot completes.
-- `finalObject`: final Zod-validated object.
-- `toResponse()`: SSE or NDJSON over completed slot output, partial snapshots,
-  or raw slot events.
+- `completedSlotStream`: validated slot values, one event per completed slot
+- `slotEventStream`: low-level slot lifecycle events, including raw draft deltas
+- `partialObjectStream`: draft object snapshots for low-level consumers
+- `finalObject`: final Zod-validated object
+- `toResponse()`: SSE or NDJSON over completed slots, partial snapshots, or raw
+  slot events
 
 Choose one live view per run. After a live view finishes, `finalObject` can
 still be awaited for the validated result.
@@ -72,6 +87,8 @@ for await (const event of stream.slotEventStream) {
 Use `stream.toResponse({ source: "events" })` or
 `stream.toReadableStream({ source: "events" })` when an HTTP stream needs raw
 slot lifecycle events instead of completed slots.
+
+## Adapters
 
 Provider adapters are available from:
 

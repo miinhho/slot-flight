@@ -8,6 +8,9 @@ first. Provider/framework adapters are available for the OpenAI SDK,
 OpenAI-compatible HTTP endpoints, and LangChain. Runnable examples live in
 `examples/`.
 
+Full Python SDK notes live in the
+[Python SDK guide](../../docs/python/README.md).
+
 ```py
 import os
 

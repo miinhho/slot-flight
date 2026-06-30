@@ -85,8 +85,8 @@ for await (const slot of stream.completedSlotStream) {
 const finalObject = await stream.finalObject;
 ```
 
-TypeScript-specific docs and examples live in
-`packages/typescript`.
+TypeScript-specific docs and examples live in the
+[TypeScript SDK guide](docs/typescript/README.md) and `packages/typescript`.
 
 ## Python
 
@@ -106,7 +106,8 @@ class Triage(BaseModel):
 output = slot_object(Triage)
 ```
 
-Python package details and provider examples live in `packages/python`.
+Python package details and provider examples live in the
+[Python SDK guide](docs/python/README.md) and `packages/python`.
 
 ## Protocol
 
