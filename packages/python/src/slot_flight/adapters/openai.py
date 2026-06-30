@@ -5,7 +5,7 @@ from collections.abc import Sequence
 from typing import Any
 
 from slot_flight._streams import close_stream, iterate_stream
-from slot_flight.object import (
+from slot_flight.slot.object import (
     SlotObjectOutput,
     SlotObjectStream,
     create_slot_object_stream,

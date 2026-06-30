@@ -6,7 +6,7 @@ from collections.abc import Mapping, Sequence
 from json import JSONDecodeError
 from typing import Any
 
-from slot_flight.object import (
+from slot_flight.slot.object import (
     SlotObjectOutput,
     SlotObjectStream,
     create_slot_object_stream,

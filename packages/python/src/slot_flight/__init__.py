@@ -1,4 +1,3 @@
-from .engine import SlotFlight, slot_flight
 from .errors import (
     SlotFlightConfigurationError,
     SlotFlightError,
@@ -7,7 +6,8 @@ from .errors import (
     SlotFlightStreamError,
     SlotFlightValidationError,
 )
-from .object import (
+from .slot.execution import SlotFlight, slot_flight
+from .slot.object import (
     CompletedSlot,
     SlotObjectEventSource,
     SlotObjectOutput,

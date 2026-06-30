@@ -10,7 +10,7 @@ from slot_flight import (
     create_slot_object_event_stream,
     slot_object,
 )
-from slot_flight.object import create_slot_object_stream
+from slot_flight.slot.object import create_slot_object_stream
 
 
 class Metadata(BaseModel):
