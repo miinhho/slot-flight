@@ -26,7 +26,7 @@ The leak script checks:
 - `completedSlotStream`
 - SSE `toResponse()`
 - Vercel adapter facade
-- debug stream cancellation
+- event stream cancellation
 - provider abort cleanup
 
 The default thresholds are intentionally broad. Treat a failure as a signal to

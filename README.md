@@ -177,14 +177,17 @@ provide your own `SlotGenerator` directly.
 `streamSlotObject()` returns a `SlotObjectStream`:
 
 - `completedSlotStream`: validated slot values, one event per completed slot.
+- `slotEventStream`: low-level slot lifecycle events, including raw draft
+  deltas before validation.
+- `partialObjectStream`: draft object snapshots for low-level consumers. Values
+  may include raw, unvalidated slot text before a slot completes.
 - `finalObject`: final Zod-validated object.
 - `toResponse()`: SSE or NDJSON over completed slot output.
-- `debug`: partial snapshots and low-level slot events.
 
 Each `SlotObjectStream` owns one live model run. Choose one live view per run:
-`completedSlotStream`, `toResponse()`, one `debug` stream, or `finalObject` by
-itself. After a live view finishes, `finalObject` can still be awaited for the
-validated result.
+`completedSlotStream`, `slotEventStream`, `partialObjectStream`, `toResponse()`,
+`toReadableStream()`, or `finalObject` by itself. After a live view finishes,
+`finalObject` can still be awaited for the validated result.
 
 For HTTP handlers:
 
@@ -202,15 +205,31 @@ export async function POST() {
 ```
 
 `toResponse()` defaults to SSE over completed slots. Use
-`stream.toResponse({ format: "ndjson" })` for newline-delimited JSON.
+`stream.toResponse({ format: "ndjson" })` for newline-delimited JSON. Use
+`stream.toResponse({ source: "events" })` or
+`toReadableStream({ source: "events" })` when an HTTP stream needs raw slot
+lifecycle events instead of completed slots.
 
-Low-level events are intentionally behind `debug`:
+Low-level events can drive draft UI. Treat `slot-delta` values as unvalidated
+drafts and `slot-complete` values as validated commits:
 
 ```ts
-for await (const event of stream.debug.slotEventStream) {
-  console.log(event.type);
+for await (const event of stream.slotEventStream) {
+  if (event.type === "slot-delta") {
+    renderDraft(event.slot, event.value);
+  }
+  if (event.type === "slot-complete") {
+    commitField(event.slot, event.value);
+  }
+  if (event.type === "slot-retry") {
+    clearDraft(event.slot);
+  }
 }
 ```
+
+`slotEventStream` and `partialObjectStream` are live low-level views. A
+`slot-delta` can contain raw text that fails later validation; use
+`slot-complete` or `completedSlotStream` as the structured data commit point.
 
 ## Reliability Scope
 

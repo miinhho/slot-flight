@@ -1,9 +1,11 @@
 export type {
   CompletedSlot,
-  SlotObjectDebugStream,
+  SlotFlightEvent,
   SlotObjectOptions,
+  SlotObjectReadableStreamOptions,
   SlotObjectResponseOptions,
   SlotObjectStream,
-  SlotObjectStreamFormat
+  SlotObjectStreamFormat,
+  SlotObjectStreamSource
 } from "./slot/index.js";
 export { slotObject } from "./slot/index.js";

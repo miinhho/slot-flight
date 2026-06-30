@@ -1,6 +1,6 @@
 {
   "name": "slot-flight",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Slot-wise LLM generation and server-owned JSON assembly for TypeScript.",
   "packageManager": "bun@1.3.14",
   "type": "module",

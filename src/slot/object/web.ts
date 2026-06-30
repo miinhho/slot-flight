@@ -10,6 +10,16 @@ import type {
   SlotObjectStreamSource
 } from "./stream.js";
 
+type SlotObjectStreamPayloadEvent =
+  | SlotFlightEvent["type"]
+  | "partial"
+  | "slot";
+
+interface SlotObjectStreamPayload {
+  event: SlotObjectStreamPayloadEvent;
+  data: unknown;
+}
+
 export function toReadableStream<T>(
   events: AsyncIterable<SlotFlightEvent>,
   options: SlotObjectReadableStreamOptions,
@@ -18,7 +28,7 @@ export function toReadableStream<T>(
   const encoder = new TextEncoder();
   const format = options.format ?? "sse";
   const source = options.source ?? "completed";
-  let iterator: AsyncIterator<{ event: string; data: unknown }> | undefined;
+  let iterator: AsyncIterator<SlotObjectStreamPayload> | undefined;
   let cancelled = false;
 
   return new ReadableStream({
@@ -81,7 +91,7 @@ export function toResponse<T>(
 async function* streamPayloads<T>(
   events: AsyncIterable<SlotFlightEvent>,
   source: SlotObjectStreamSource
-): AsyncGenerator<{ event: string; data: unknown }> {
+): AsyncGenerator<SlotObjectStreamPayload> {
   if (source === "partial") {
     for await (const partial of partialObjectIterator<T>(events)) {
       yield { event: "partial", data: partial };
@@ -101,10 +111,9 @@ async function* streamPayloads<T>(
   }
 }
 
-function completedEventPayload<T>(event: SlotFlightEvent): {
-  event: string;
-  data: unknown;
-} {
+function completedEventPayload<T>(
+  event: SlotFlightEvent
+): SlotObjectStreamPayload {
   if (event.type === "slot-complete") {
     return {
       event: "slot",
@@ -124,7 +133,7 @@ function completedEventPayload<T>(event: SlotFlightEvent): {
 }
 
 function formatPayload(
-  payload: { event: string; data: unknown },
+  payload: SlotObjectStreamPayload,
   format: SlotObjectStreamFormat
 ): string {
   if (format === "ndjson") {
