@@ -3,11 +3,10 @@ from __future__ import annotations
 import asyncio
 import os
 
-from openai import AsyncOpenAI
 from pydantic import BaseModel, Field
 
 from slot_flight import slot_object
-from slot_flight.adapters.openai import stream_slot_object
+from slot_flight.adapters.openai_compatible import stream_slot_object
 
 
 class Triage(BaseModel):
@@ -17,12 +16,14 @@ class Triage(BaseModel):
 
 
 async def main() -> None:
-    client = _create_client()
-    output = slot_object(Triage)
+    api_key = os.getenv("API_KEY")
+    if not api_key:
+        raise RuntimeError("Set API_KEY")
 
     stream = stream_slot_object(
-        client=client,
-        model=os.getenv("MODEL") or os.getenv("OPENAI_MODEL", "openai/gpt-oss-20b"),
+        base_url=os.getenv("API_BASE_URL", "https://integrate.api.nvidia.com/v1"),
+        api_key=api_key,
+        model=os.getenv("MODEL", "minimaxai/minimax-m3"),
         messages=[
             {
                 "role": "user",
@@ -34,30 +35,17 @@ and the customer needs a reliable ETA before their billing review.
 """,
             }
         ],
-        output=output,
-        max_tokens=4096,
+        output=slot_object(Triage),
+        max_tokens=8192,
         temperature=1,
-        top_p=1,
+        top_p=0.95,
     )
 
-    async for slot in stream.completed_slots():
+    async for slot in stream.completed_slot_stream():
         print(slot.slot, slot.value)
 
     result = await stream.final_object()
     print(result.model_dump_json(indent=2))
-
-
-def _create_client() -> AsyncOpenAI:
-    api_key = os.getenv("API_KEY")
-    base_url = os.getenv("API_BASE_URL")
-
-    if api_key and base_url:
-        return AsyncOpenAI(api_key=api_key, base_url=base_url)
-    if api_key:
-        return AsyncOpenAI(api_key=api_key)
-    if base_url:
-        return AsyncOpenAI(base_url=base_url)
-    return AsyncOpenAI()
 
 
 if __name__ == "__main__":

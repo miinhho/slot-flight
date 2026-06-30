@@ -5,9 +5,11 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from slot_flight import slot_object
-from slot_flight.adapters.anthropic import stream_slot_object as anthropic_stream
 from slot_flight.adapters.langchain import stream_slot_object as langchain_stream
 from slot_flight.adapters.openai import stream_slot_object as openai_stream
+from slot_flight.adapters.openai_compatible import (
+    stream_slot_object as openai_compatible_stream,
+)
 
 
 class Summary(BaseModel):
@@ -83,107 +85,42 @@ class AdapterTest(unittest.IsolatedAsyncioTestCase):
             Summary(title="Hello", tags=["a", "b"]),
         )
 
-    async def test_anthropic_adapter_streams_slot_object(self):
-        client = FakeAnthropicClient(
+    async def test_openai_compatible_adapter_streams_sse_chat_completions(self):
+        client = FakeOpenAICompatibleClient(
             [
-                {"type": "content_block_delta", "delta": {"text": "<1>Hello</1>"}},
-                {
-                    "type": "content_block_delta",
-                    "delta": {"text": '<2>["a","b"]</2>'},
-                },
+                'data: {"choices":[{"delta":{"content":"<1>Hello</1>"}}]}',
+                'data: {"choices":[{"delta":{"content":"<2>[\\"a\\",\\"b\\"]</2>"}}]}',
+                "data: [DONE]",
             ]
         )
 
-        stream = anthropic_stream(
+        stream = openai_compatible_stream(
             client=client,
-            model="claude-test",
+            base_url="https://integrate.api.nvidia.com/v1",
+            api_key="test-key",
+            model="minimaxai/minimax-m3",
             messages=[{"role": "user", "content": "Classify this."}],
             output=slot_object(Summary),
+            temperature=0.2,
         )
 
         self.assertEqual(
             await stream.final_object(),
             Summary(title="Hello", tags=["a", "b"]),
         )
-        created = self.assert_created(client.messages.created)
-        self.assertTrue(created["stream"])
-        self.assertEqual(created["model"], "claude-test")
-
-    async def test_anthropic_adapter_prefers_native_text_stream_context(self):
-        client = FakeAnthropicStreamClient(["<1>Hello</1>", '<2>["a","b"]</2>'])
-
-        stream = anthropic_stream(
-            client=client,
-            model="claude-test",
-            messages=[{"role": "user", "content": "Classify this."}],
-            output=slot_object(Summary),
-            max_tokens=256,
-        )
-
+        self.assertEqual(client.method, "POST")
         self.assertEqual(
-            await stream.final_object(),
-            Summary(title="Hello", tags=["a", "b"]),
+            client.url,
+            "https://integrate.api.nvidia.com/v1/chat/completions",
         )
-        created = self.assert_created(client.messages.created)
-        self.assertEqual(created["max_tokens"], 256)
-
-    async def test_anthropic_adapter_supports_object_events(self):
-        client = FakeAnthropicClient(
-            [
-                _anthropic_text_delta("<1>Hello</1>"),
-                _anthropic_text_delta('<2>["a","b"]</2>'),
-            ]
-        )
-
-        stream = anthropic_stream(
-            client=client,
-            model="claude-test",
-            messages=[{"role": "user", "content": "Classify this."}],
-            output=slot_object(Summary),
-        )
-
-        self.assertEqual(
-            await stream.final_object(),
-            Summary(title="Hello", tags=["a", "b"]),
-        )
-
-    async def test_anthropic_adapter_supports_async_native_text_stream_context(self):
-        client = FakeAsyncAnthropicStreamClient(["<1>Hello</1>", '<2>["a","b"]</2>'])
-
-        stream = anthropic_stream(
-            client=client,
-            model="claude-test",
-            messages=[{"role": "user", "content": "Classify this."}],
-            output=slot_object(Summary),
-        )
-
-        self.assertEqual(
-            await stream.final_object(),
-            Summary(title="Hello", tags=["a", "b"]),
-        )
-        context = client.messages.context
-        self.assertIsNotNone(context)
-        assert context is not None
-        self.assertTrue(context.exited)
-
-    async def test_anthropic_adapter_exits_native_stream_context_on_early_stop(self):
-        client = FakeAnthropicStreamClient(["<1>Hello"])
-
-        stream = anthropic_stream(
-            client=client,
-            model="claude-test",
-            messages=[{"role": "user", "content": "Classify this."}],
-            output=slot_object(Summary),
-        )
-        iterator = stream.events().__aiter__()
-
-        await iterator.__anext__()
-        await iterator.aclose()
-
-        context = client.messages.context
-        self.assertIsNotNone(context)
-        assert context is not None
-        self.assertTrue(context.exited)
+        headers = self.assert_created(client.headers)
+        payload = self.assert_created(client.payload)
+        self.assertEqual(headers["Authorization"], "Bearer test-key")
+        self.assertEqual(headers["Accept"], "text/event-stream")
+        self.assertTrue(payload["stream"])
+        self.assertEqual(payload["model"], "minimaxai/minimax-m3")
+        self.assertEqual(payload["temperature"], 0.2)
+        self.assertIn("OUTPUT CONTRACT", payload["messages"][-1]["content"])
 
     async def test_langchain_adapter_streams_slot_object(self):
         runnable = FakeRunnable(["<1>Hello</1>", '<2>["a","b"]</2>'])
@@ -287,79 +224,38 @@ class FakeCompletions:
         return AsyncItems(self._chunks)
 
 
-class FakeAnthropicClient:
-    def __init__(self, events):
-        self.messages = FakeMessages(events)
+class FakeOpenAICompatibleClient:
+    def __init__(self, lines):
+        self._lines = lines
+        self.method: str | None = None
+        self.url: str | None = None
+        self.headers: dict[str, str] | None = None
+        self.payload: dict[str, Any] | None = None
+
+    def stream(self, method, url, *, headers, json):
+        self.method = method
+        self.url = url
+        self.headers = headers
+        self.payload = json
+        return FakeOpenAICompatibleResponse(self._lines)
 
 
-class FakeAnthropicStreamClient:
-    def __init__(self, texts):
-        self.messages = FakeStreamMessages(texts)
-
-
-class FakeAsyncAnthropicStreamClient:
-    def __init__(self, texts):
-        self.messages = FakeAsyncStreamMessages(texts)
-
-
-class FakeMessages:
-    def __init__(self, events):
-        self._events = events
-        self.created: dict[str, Any] | None = None
-
-    async def create(self, **kwargs):
-        self.created = kwargs
-        return AsyncItems(self._events)
-
-
-class FakeStreamMessages:
-    def __init__(self, texts):
-        self._texts = texts
-        self.created: dict[str, Any] | None = None
-        self.context: FakeTextStreamContext | None = None
-
-    def stream(self, **kwargs):
-        self.created = kwargs
-        self.context = FakeTextStreamContext(self._texts)
-        return self.context
-
-
-class FakeAsyncStreamMessages:
-    def __init__(self, texts):
-        self._texts = texts
-        self.created: dict[str, Any] | None = None
-        self.context: FakeAsyncTextStreamContext | None = None
-
-    def stream(self, **kwargs):
-        self.created = kwargs
-        self.context = FakeAsyncTextStreamContext(self._texts)
-        return self.context
-
-
-class FakeTextStreamContext:
-    def __init__(self, texts):
-        self.text_stream = texts
-        self.exited = False
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc, traceback):
-        self.exited = True
-        return False
-
-
-class FakeAsyncTextStreamContext:
-    def __init__(self, texts):
-        self.text_stream = AsyncItems(texts)
-        self.exited = False
+class FakeOpenAICompatibleResponse:
+    def __init__(self, lines):
+        self._lines = lines
 
     async def __aenter__(self):
         return self
 
     async def __aexit__(self, exc_type, exc, traceback):
-        self.exited = True
         return False
+
+    def raise_for_status(self):
+        return None
+
+    async def aiter_lines(self):
+        for line in self._lines:
+            yield line
 
 
 class FakeRunnable:
@@ -432,13 +328,6 @@ class CloseableIterator:
 def _openai_chunk(content: str):
     return SimpleNamespace(
         choices=[SimpleNamespace(delta=SimpleNamespace(content=content))]
-    )
-
-
-def _anthropic_text_delta(text: str):
-    return SimpleNamespace(
-        type="content_block_delta",
-        delta=SimpleNamespace(text=text),
     )
 
 

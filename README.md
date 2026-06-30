@@ -91,7 +91,7 @@ TypeScript-specific docs and examples live in
 ## Python
 
 The Python SDK provides a Pydantic-first object API plus provider/framework
-adapters for OpenAI, Anthropic, and LangChain.
+adapters for the OpenAI SDK, OpenAI-compatible HTTP endpoints, and LangChain.
 
 ```py
 from pydantic import BaseModel, Field

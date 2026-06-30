@@ -45,7 +45,8 @@ uv run --extra langchain examples/langchain_runnable.py
 ```
 
 The OpenAI-compatible example can run against NVIDIA NIM or another
-OpenAI-compatible endpoint. Use the root `.env.example` keys:
+OpenAI-compatible endpoint. Use the root `.env.example` keys with either the
+OpenAI SDK adapter or the raw HTTP adapter:
 
 ```sh
 API_KEY=...
@@ -58,6 +59,7 @@ Then run:
 ```sh
 cd packages/python
 uv run --extra openai examples/openai_compatible.py
+uv run --extra openai-compatible examples/openai_compatible_httpx.py
 ```
 
 ## CI

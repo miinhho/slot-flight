@@ -11,6 +11,8 @@ from .object import (
     CompletedSlot,
     SlotObjectOutput,
     SlotObjectStream,
+    SlotObjectStreamFormat,
+    SlotObjectStreamSource,
     create_slot_object_stream,
     slot_object,
 )
@@ -32,6 +34,8 @@ __all__ = [
     "SlotFlightValidationError",
     "SlotFrameRequest",
     "SlotObjectOutput",
+    "SlotObjectStreamFormat",
+    "SlotObjectStreamSource",
     "SlotObjectStream",
     "CompletedSlot",
     "create_slot_object_stream",

@@ -9,7 +9,7 @@ EXAMPLES = ROOT / "examples"
 
 class ExampleTest(unittest.TestCase):
     def test_example_filenames_do_not_shadow_imported_packages(self):
-        package_names = {"anthropic", "langchain", "openai", "pydantic", "slot_flight"}
+        package_names = {"langchain", "openai", "pydantic", "slot_flight"}
         example_names = {path.stem for path in EXAMPLES.glob("*.py")}
 
         self.assertFalse(example_names & package_names)

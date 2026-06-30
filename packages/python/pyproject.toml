@@ -32,11 +32,11 @@ Repository = "https://github.com/miinhho/slot-flight"
 Issues = "https://github.com/miinhho/slot-flight/issues"
 
 [project.optional-dependencies]
-anthropic = ["anthropic>=0.34"]
 langchain = ["langchain-core>=0.3"]
 openai = ["openai>=1"]
+openai-compatible = ["httpx>=0.28"]
 adapters = [
-  "anthropic>=0.34",
+  "httpx>=0.28",
   "langchain-core>=0.3",
   "openai>=1"
 ]

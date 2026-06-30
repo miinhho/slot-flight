@@ -1,4 +1,5 @@
 import asyncio
+import json
 import unittest
 from typing import Any, Literal, cast
 
@@ -163,6 +164,74 @@ class SlotObjectTest(unittest.IsolatedAsyncioTestCase):
             [slot.path for slot in output.slots],
         )
         self.assertEqual(final_object.title, "Slot-wise JSON")
+
+    async def test_partial_object_stream_matches_stateful_events(self):
+        output = slot_object(TitleOnly)
+
+        async def generate(request):
+            slot = request.slots[0]
+            yield f"<{slot.id}>Slot-wise JSON</{slot.id}>"
+
+        stream = create_slot_object_stream(output=output, generate=generate)
+
+        partials = [partial async for partial in stream.partial_object_stream()]
+
+        self.assertEqual(
+            partials,
+            [
+                {},
+                {"title": "Slot-wise JSON"},
+                TitleOnly(title="Slot-wise JSON"),
+            ],
+        )
+
+    async def test_serializes_completed_slot_stream_as_ndjson(self):
+        output = slot_object(TitleOnly)
+
+        async def generate(request):
+            slot = request.slots[0]
+            yield f"<{slot.id}>Slot-wise JSON</{slot.id}>"
+
+        stream = create_slot_object_stream(output=output, generate=generate)
+
+        lines = [
+            json.loads(line)
+            async for line in stream.to_ndjson(source="completed")
+        ]
+
+        self.assertEqual(
+            lines,
+            [
+                {
+                    "type": "slot",
+                    "data": {
+                        "slot": "title",
+                        "value": "Slot-wise JSON",
+                        "state": {"title": "Slot-wise JSON"},
+                    },
+                },
+                {
+                    "type": "done",
+                    "data": {"state": {"title": "Slot-wise JSON"}},
+                },
+            ],
+        )
+
+    async def test_serializes_low_level_events_as_sse(self):
+        output = slot_object(TitleOnly)
+
+        async def generate(request):
+            slot = request.slots[0]
+            yield f"<{slot.id}>Slot-wise JSON</{slot.id}>"
+
+        stream = create_slot_object_stream(output=output, generate=generate)
+
+        body = "".join([chunk async for chunk in stream.to_sse(source="events")])
+
+        self.assertIn("event: slot-start\n", body)
+        self.assertIn("event: slot-delta\n", body)
+        self.assertIn("event: slot-complete\n", body)
+        self.assertIn("event: done\n", body)
 
     async def test_rejects_second_live_consumer(self):
         output = slot_object(TitleOnly)
