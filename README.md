@@ -179,7 +179,8 @@ provide your own `SlotGenerator` directly.
 - `completedSlotStream`: validated slot values, one event per completed slot.
 - `slotEventStream`: low-level slot lifecycle events, including raw draft
   deltas before validation.
-- `partialObjectStream`: partial object snapshots for low-level consumers.
+- `partialObjectStream`: draft object snapshots for low-level consumers. Values
+  may include raw, unvalidated slot text before a slot completes.
 - `finalObject`: final Zod-validated object.
 - `toResponse()`: SSE or NDJSON over completed slot output.
 
@@ -205,6 +206,7 @@ export async function POST() {
 
 `toResponse()` defaults to SSE over completed slots. Use
 `stream.toResponse({ format: "ndjson" })` for newline-delimited JSON. Use
+`stream.toResponse({ source: "events" })` or
 `toReadableStream({ source: "events" })` when an HTTP stream needs raw slot
 lifecycle events instead of completed slots.
 
@@ -219,8 +221,15 @@ for await (const event of stream.slotEventStream) {
   if (event.type === "slot-complete") {
     commitField(event.slot, event.value);
   }
+  if (event.type === "slot-retry") {
+    clearDraft(event.slot);
+  }
 }
 ```
+
+`slotEventStream` and `partialObjectStream` are live low-level views. A
+`slot-delta` can contain raw text that fails later validation; use
+`slot-complete` or `completedSlotStream` as the structured data commit point.
 
 ## Reliability Scope
 

@@ -1,3 +1,4 @@
+export type { SlotFlightEvent } from "../types.js";
 export {
   runSlotFrameStream,
   type SlotExecutionOptions

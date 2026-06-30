@@ -101,6 +101,28 @@ describe("SlotObjectStream web output", () => {
     ]);
   });
 
+  it("can return an HTTP Response over low-level slot events", async () => {
+    const generate: SlotGenerator = async function* (request) {
+      const slot = firstSlot(request);
+      yield `<${slot.id}>ok</${slot.id}>`;
+    };
+
+    const stream = slotObjectStreamFromGenerator(generate);
+    const lines = (
+      await stream.toResponse({ source: "events", format: "ndjson" }).text()
+    )
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+
+    expect(lines.map((line) => line.type)).toEqual([
+      "slot-start",
+      "slot-delta",
+      "slot-complete",
+      "done"
+    ]);
+  });
+
   it("serializes retry errors in completed SSE output", async () => {
     const generate: SlotGenerator = async function* (request) {
       const slot = firstSlot(request);

@@ -1,5 +1,6 @@
 export type {
   CompletedSlot,
+  SlotFlightEvent,
   SlotObjectOptions,
   SlotObjectReadableStreamOptions,
   SlotObjectResponseOptions,

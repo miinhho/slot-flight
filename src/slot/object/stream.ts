@@ -18,6 +18,7 @@ export interface SlotObjectReadableStreamOptions {
 }
 
 export interface SlotObjectResponseOptions {
+  source?: SlotObjectStreamSource;
   format?: SlotObjectStreamFormat;
   status?: number;
   statusText?: string;
