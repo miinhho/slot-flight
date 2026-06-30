@@ -195,7 +195,7 @@ describe("OpenAI adapter", () => {
         schema: z.object({ name: z.string().min(1).describe("Write a name.") })
       })
     });
-    const reader = stream.debug
+    const reader = stream
       .toReadableStream({ source: "events", format: "ndjson" })
       .getReader();
 

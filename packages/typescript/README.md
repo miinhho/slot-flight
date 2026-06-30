@@ -36,6 +36,40 @@ for await (const slot of stream.completedSlotStream) {
 const finalObject = await stream.finalObject;
 ```
 
+`streamSlotObject()` exposes one live model run through several views:
+
+- `completedSlotStream`: validated slot values, one event per completed slot.
+- `slotEventStream`: low-level slot lifecycle events, including raw draft
+  deltas before validation.
+- `partialObjectStream`: draft object snapshots for low-level consumers. Values
+  may include raw, unvalidated slot text before a slot completes.
+- `finalObject`: final Zod-validated object.
+- `toResponse()`: SSE or NDJSON over completed slot output, partial snapshots,
+  or raw slot events.
+
+Choose one live view per run. After a live view finishes, `finalObject` can
+still be awaited for the validated result.
+
+Low-level events can drive draft UI:
+
+```ts
+for await (const event of stream.slotEventStream) {
+  if (event.type === "slot-delta") {
+    renderDraft(event.slot, event.value);
+  }
+  if (event.type === "slot-complete") {
+    commitField(event.slot, event.value);
+  }
+  if (event.type === "slot-retry") {
+    clearDraft(event.slot);
+  }
+}
+```
+
+Use `stream.toResponse({ source: "events" })` or
+`stream.toReadableStream({ source: "events" })` when an HTTP stream needs raw
+slot lifecycle events instead of completed slots.
+
 Provider adapters are available from:
 
 - `slot-flight/adapters/openai`
