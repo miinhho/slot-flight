@@ -108,6 +108,7 @@ adapters for the OpenAI SDK, OpenAI-compatible HTTP endpoints, and LangChain.
 ```py
 from pydantic import BaseModel, Field
 from slot_flight import slot_object
+from slot_flight.adapters.openai import stream_slot_object
 
 
 class Triage(BaseModel):
@@ -115,7 +116,17 @@ class Triage(BaseModel):
     tags: list[str] = Field(description="Write a JSON array of exactly 3 tags.")
 
 
-output = slot_object(Triage)
+stream = stream_slot_object(
+    client=openai,
+    model="gpt-4.1-mini",
+    messages=[{"role": "user", "content": "Classify this feedback."}],
+    output=slot_object(Triage),
+)
+
+async for slot in stream.completed_slot_stream():
+    print(slot.slot, slot.value)
+
+result = await stream.final_object()
 ```
 
 Python package details and provider examples live in the
