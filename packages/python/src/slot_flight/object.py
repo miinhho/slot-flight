@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Callable
+from collections.abc import AsyncIterable, Callable
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Literal, get_args, get_origin
+from typing import Any, Literal, cast, get_args, get_origin
 
 from pydantic import BaseModel, TypeAdapter
 
@@ -32,11 +32,12 @@ class CompletedSlot:
 
 SlotObjectStreamSource = Literal["completed", "partial", "events"]
 SlotObjectStreamFormat = Literal["sse", "ndjson"]
+SlotObjectEventSource = Callable[[], AsyncIterable[dict[str, Any]]]
 
 
 class SlotObjectStream:
-    def __init__(self, create_flight: Callable[[], SlotFlight]):
-        self._create_flight = create_flight
+    def __init__(self, create_events: SlotObjectEventSource):
+        self._create_events = create_events
         self._events: list[dict[str, Any]] = []
         self._final_object: Any | None = None
         self._consumed = False
@@ -133,7 +134,7 @@ class SlotObjectStream:
             raise RuntimeError("Slot object stream already has a live consumer.")
 
         self._running = True
-        events = self._create_flight().run()
+        events = self._create_events()
         try:
             async for event in events:
                 self._events.append(event)
@@ -175,16 +176,28 @@ def create_slot_object_stream(
     prompt: Prompt | None = None,
     max_retries: int | None = None,
 ) -> SlotObjectStream:
-    def create_flight() -> SlotFlight:
+    def create_events():
         return SlotFlight(
             slots=output.slots,
             generate=generate,
             prompt=prompt if prompt is not None else output.prompt,
             max_retries=max_retries if max_retries is not None else output.max_retries,
             validate_final=output.model,
-        )
+        ).run()
 
-    return SlotObjectStream(create_flight)
+    return SlotObjectStream(create_events)
+
+
+def create_slot_object_event_stream(
+    source: AsyncIterable[dict[str, Any]] | SlotObjectEventSource,
+) -> SlotObjectStream:
+    if callable(source):
+        create_events = cast("SlotObjectEventSource", source)
+    else:
+        def create_events() -> AsyncIterable[dict[str, Any]]:
+            return source
+
+    return SlotObjectStream(create_events)
 
 
 def _event_has_state(event: dict[str, Any]) -> bool:

@@ -9,10 +9,12 @@ from .errors import (
 )
 from .object import (
     CompletedSlot,
+    SlotObjectEventSource,
     SlotObjectOutput,
     SlotObjectStream,
     SlotObjectStreamFormat,
     SlotObjectStreamSource,
+    create_slot_object_event_stream,
     create_slot_object_stream,
     slot_object,
 )
@@ -33,11 +35,13 @@ __all__ = [
     "SlotFlightStreamError",
     "SlotFlightValidationError",
     "SlotFrameRequest",
+    "SlotObjectEventSource",
     "SlotObjectOutput",
+    "SlotObjectStream",
     "SlotObjectStreamFormat",
     "SlotObjectStreamSource",
-    "SlotObjectStream",
     "CompletedSlot",
+    "create_slot_object_event_stream",
     "create_slot_object_stream",
     "slot_flight",
     "slot_object",

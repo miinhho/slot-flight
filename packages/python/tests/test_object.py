@@ -5,7 +5,11 @@ from typing import Any, Literal, cast
 
 from pydantic import BaseModel, Field
 
-from slot_flight import SlotFlightConfigurationError, slot_object
+from slot_flight import (
+    SlotFlightConfigurationError,
+    create_slot_object_event_stream,
+    slot_object,
+)
 from slot_flight.object import create_slot_object_stream
 
 
@@ -164,6 +168,44 @@ class SlotObjectTest(unittest.IsolatedAsyncioTestCase):
             [slot.path for slot in output.slots],
         )
         self.assertEqual(final_object.title, "Slot-wise JSON")
+
+    async def test_wraps_existing_slot_event_source(self):
+        run_count = 0
+
+        async def source():
+            nonlocal run_count
+            run_count += 1
+            yield {
+                "type": "slot-start",
+                "slot": "title",
+                "attempt": 1,
+                "state": {},
+            }
+            yield {
+                "type": "slot-delta",
+                "slot": "title",
+                "attempt": 1,
+                "delta": "Slot-wise JSON",
+                "value": "Slot-wise JSON",
+                "state": {},
+            }
+            yield {
+                "type": "slot-complete",
+                "slot": "title",
+                "attempt": 1,
+                "value": "Slot-wise JSON",
+                "state": {"title": "Slot-wise JSON"},
+            }
+            yield {"type": "done", "state": {"title": "Slot-wise JSON"}}
+
+        stream = create_slot_object_event_stream(source)
+
+        completed = [slot async for slot in stream.completed_slot_stream()]
+        final_object = await stream.final_object()
+
+        self.assertEqual(run_count, 1)
+        self.assertEqual(completed[0].slot, "title")
+        self.assertEqual(final_object, {"title": "Slot-wise JSON"})
 
     async def test_partial_object_stream_matches_stateful_events(self):
         output = slot_object(TitleOnly)
