@@ -24,6 +24,7 @@ def stream_slot_object(
     client: Any | None = None,
     headers: Mapping[str, str] | None = None,
     path: str = "/chat/completions",
+    timeout: Any = 60.0,
     **params: Any,
 ) -> SlotObjectStream:
     async def generate(request: SlotFlightRequest):
@@ -46,6 +47,7 @@ def stream_slot_object(
             url=_join_url(base_url, path),
             headers=_request_headers(api_key=api_key, headers=headers),
             payload=payload,
+            timeout=timeout,
         )
         async for chunk in chunks:
             text = _chunk_text(chunk)
@@ -61,6 +63,7 @@ async def _stream_chat_completion_chunks(
     url: str,
     headers: dict[str, str],
     payload: dict[str, Any],
+    timeout: Any,
 ):
     if client is not None:
         async for chunk in _stream_with_client(
@@ -80,7 +83,9 @@ async def _stream_chat_completion_chunks(
             "the raw OpenAI-compatible adapter."
         ) from error
 
-    async with httpx.AsyncClient(timeout=None) as http_client:
+    async with httpx.AsyncClient(
+        timeout=_resolve_httpx_timeout(httpx, timeout)
+    ) as http_client:
         async for chunk in _stream_with_client(
             client=http_client,
             url=url,
@@ -88,6 +93,14 @@ async def _stream_chat_completion_chunks(
             payload=payload,
         ):
             yield chunk
+
+
+def _resolve_httpx_timeout(httpx: Any, timeout: Any) -> Any:
+    if timeout is None or isinstance(timeout, httpx.Timeout):
+        return timeout
+    if isinstance(timeout, int | float):
+        return httpx.Timeout(float(timeout), connect=min(10.0, float(timeout)))
+    return timeout
 
 
 async def _stream_with_client(

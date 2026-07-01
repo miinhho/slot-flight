@@ -121,8 +121,14 @@ stream = stream_slot_object(
     model=os.getenv("MODEL", "minimaxai/minimax-m3"),
     messages=[{"role": "user", "content": "Classify this feedback."}],
     output=slot_object(Triage),
+    timeout=60.0,
 )
 ```
+
+The raw HTTP adapter creates an `httpx.AsyncClient` with a bounded timeout by
+default. Pass `timeout=None` to disable that timeout, or pass your own
+`client` when you want to own HTTPX timeouts, limits, proxies, or transport
+configuration directly.
 
 LangChain:
 
