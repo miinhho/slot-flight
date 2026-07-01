@@ -1,6 +1,6 @@
 {
   "name": "slot-flight",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Slot-wise LLM generation and server-owned JSON assembly for TypeScript.",
   "repository": {
     "type": "git",
