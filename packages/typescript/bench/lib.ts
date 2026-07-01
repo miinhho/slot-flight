@@ -49,7 +49,7 @@ export const articleGenerator: SlotGenerator = async function* (request) {
   for (const slot of request.slots) {
     yield `<${slot.id}>`;
     yield valueByPath[slot.path] ?? "value";
-    yield `</${slot.id}>`;
+    yield `\n</${slot.id}>`;
   }
 };
 

@@ -56,7 +56,7 @@ class SlotObjectTest(unittest.IsolatedAsyncioTestCase):
                 "metadata.audience": "backend engineers",
             }
             for slot in request.slots:
-                yield f"<{slot.id}>{values[slot.path]}</{slot.id}>"
+                yield f"<{slot.id}>{values[slot.path]}\n</{slot.id}>"
 
         stream = create_slot_object_stream(output=output, generate=generate)
 
@@ -102,7 +102,7 @@ class SlotObjectTest(unittest.IsolatedAsyncioTestCase):
                 "metadata.audience": "backend engineers",
             }
             for slot in request.slots:
-                yield f"<{slot.id}>{values[slot.path]}</{slot.id}>"
+                yield f"<{slot.id}>{values[slot.path]}\n</{slot.id}>"
 
         stream = create_slot_object_stream(output=output, generate=generate)
 
@@ -132,7 +132,7 @@ class SlotObjectTest(unittest.IsolatedAsyncioTestCase):
 
         async def generate(request):
             slot = request.slots[0]
-            yield f'<{slot.id}>{{"audience":"backend engineers"}}</{slot.id}>'
+            yield f'<{slot.id}>{{"audience":"backend engineers"}}\n</{slot.id}>'
 
         stream = create_slot_object_stream(output=output, generate=generate)
 
@@ -155,7 +155,7 @@ class SlotObjectTest(unittest.IsolatedAsyncioTestCase):
                 "metadata.audience": "backend engineers",
             }
             for slot in request.slots:
-                yield f"<{slot.id}>{values[slot.path]}</{slot.id}>"
+                yield f"<{slot.id}>{values[slot.path]}\n</{slot.id}>"
 
         stream = create_slot_object_stream(output=output, generate=generate)
 
@@ -212,7 +212,7 @@ class SlotObjectTest(unittest.IsolatedAsyncioTestCase):
 
         async def generate(request):
             slot = request.slots[0]
-            yield f"<{slot.id}>Slot-wise JSON</{slot.id}>"
+            yield f"<{slot.id}>Slot-wise JSON\n</{slot.id}>"
 
         stream = create_slot_object_stream(output=output, generate=generate)
 
@@ -232,7 +232,7 @@ class SlotObjectTest(unittest.IsolatedAsyncioTestCase):
 
         async def generate(request):
             slot = request.slots[0]
-            yield f"<{slot.id}>Slot-wise JSON</{slot.id}>"
+            yield f"<{slot.id}>Slot-wise JSON\n</{slot.id}>"
 
         stream = create_slot_object_stream(output=output, generate=generate)
 
@@ -264,7 +264,7 @@ class SlotObjectTest(unittest.IsolatedAsyncioTestCase):
 
         async def generate(request):
             slot = request.slots[0]
-            yield f"<{slot.id}>Slot-wise JSON</{slot.id}>"
+            yield f"<{slot.id}>Slot-wise JSON\n</{slot.id}>"
 
         stream = create_slot_object_stream(output=output, generate=generate)
 
@@ -281,7 +281,7 @@ class SlotObjectTest(unittest.IsolatedAsyncioTestCase):
 
         async def generate(request):
             slot = request.slots[0]
-            yield f"<{slot.id}>Slot-wise JSON</{slot.id}>"
+            yield f"<{slot.id}>Slot-wise JSON\n</{slot.id}>"
             await release.wait()
 
         stream = create_slot_object_stream(output=output, generate=generate)

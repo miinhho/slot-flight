@@ -21,8 +21,8 @@ class AdapterTest(unittest.IsolatedAsyncioTestCase):
     async def test_openai_adapter_streams_slot_object(self):
         client = FakeOpenAIClient(
             [
-                {"choices": [{"delta": {"content": "<1>Hello</1>"}}]},
-                {"choices": [{"delta": {"content": '<2>["a","b"]</2>'}}]},
+                {"choices": [{"delta": {"content": "<1>Hello\n</1>"}}]},
+                {"choices": [{"delta": {"content": '<2>["a","b"]\n</2>'}}]},
             ]
         )
 
@@ -67,8 +67,8 @@ class AdapterTest(unittest.IsolatedAsyncioTestCase):
         client = FakeOpenAIClient(
             CloseableIterator(
                 [
-                    _openai_chunk("<1>Hello</1>"),
-                    _openai_chunk('<2>["a","b"]</2>'),
+                    _openai_chunk("<1>Hello\n</1>"),
+                    _openai_chunk('<2>["a","b"]\n</2>'),
                 ]
             )
         )
@@ -88,8 +88,11 @@ class AdapterTest(unittest.IsolatedAsyncioTestCase):
     async def test_openai_compatible_adapter_streams_sse_chat_completions(self):
         client = FakeOpenAICompatibleClient(
             [
-                'data: {"choices":[{"delta":{"content":"<1>Hello</1>"}}]}',
-                'data: {"choices":[{"delta":{"content":"<2>[\\"a\\",\\"b\\"]</2>"}}]}',
+                'data: {"choices":[{"delta":{"content":"<1>Hello\\n</1>"}}]}',
+                (
+                    'data: {"choices":[{"delta":{"content":'
+                    '"<2>[\\"a\\",\\"b\\"]\\n</2>"}}]}'
+                ),
                 "data: [DONE]",
             ]
         )
@@ -127,11 +130,11 @@ class AdapterTest(unittest.IsolatedAsyncioTestCase):
             [
                 ": keep-alive",
                 'data: {"choices":[{"delta":{}}],"usage":{"prompt_tokens":1}}',
-                'data: {"choices":[{"text":"<1>Hello</1>"}]}',
+                'data: {"choices":[{"text":"<1>Hello\\n</1>"}]}',
                 (
                     'data: {"choices":[{"message":{"content":['
                     '{"type":"text","text":"<2>[\\"a\\","},'
-                    '" \\"b\\"]</2>"]}}]}'
+                    '" \\"b\\"]\\n</2>"]}}]}'
                 ),
                 "data: [DONE]",
             ]
@@ -189,7 +192,7 @@ class AdapterTest(unittest.IsolatedAsyncioTestCase):
             await stream.final_object()
 
     async def test_langchain_adapter_streams_slot_object(self):
-        runnable = FakeRunnable(["<1>Hello</1>", '<2>["a","b"]</2>'])
+        runnable = FakeRunnable(["<1>Hello\n</1>", '<2>["a","b"]\n</2>'])
 
         stream = langchain_stream(
             runnable=runnable,
@@ -206,7 +209,7 @@ class AdapterTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn("OUTPUT CONTRACT", messages[-1][1])
 
     async def test_langchain_adapter_supports_sync_stream(self):
-        runnable = FakeSyncRunnable(["<1>Hello</1>", '<2>["a","b"]</2>'])
+        runnable = FakeSyncRunnable(["<1>Hello\n</1>", '<2>["a","b"]\n</2>'])
 
         stream = langchain_stream(
             runnable=runnable,
@@ -224,8 +227,10 @@ class AdapterTest(unittest.IsolatedAsyncioTestCase):
     async def test_langchain_adapter_supports_message_chunk_content_parts(self):
         runnable = FakeRunnable(
             [
-                SimpleNamespace(content=[{"type": "text", "text": "<1>He"}, "llo</1>"]),
-                {"content": [{"type": "text", "text": '<2>["a",'}, '"b"]</2>']},
+                SimpleNamespace(
+                    content=[{"type": "text", "text": "<1>He"}, "llo\n</1>"]
+                ),
+                {"content": [{"type": "text", "text": '<2>["a",'}, '"b"]\n</2>']},
             ]
         )
 

@@ -11,7 +11,10 @@ describe("SlotObjectStream web output", () => {
   it("returns an SSE Response for completed slots by default", async () => {
     const stream = streamSlotObject({
       streamText: () => ({
-        textStream: textChunks(["<1>Delayed first field.</1>", "<2>high</2>"])
+        textStream: textChunks([
+          "<1>Delayed first field.\n</1>",
+          "<2>high\n</2>"
+        ])
       }),
       model: "model-ref",
       messages: [{ role: "user", content: "Analyze feedback." }],
@@ -40,7 +43,7 @@ describe("SlotObjectStream web output", () => {
   it("can stream completed slots as NDJSON", async () => {
     const stream = streamSlotObject({
       streamText: () => ({
-        textStream: textChunks(["<1>mixed</1>"])
+        textStream: textChunks(["<1>mixed\n</1>"])
       }),
       model: "model-ref",
       messages: [{ role: "user", content: "Analyze feedback." }],
@@ -81,7 +84,7 @@ describe("SlotObjectStream web output", () => {
   it("can expose low-level slot events", async () => {
     const generate: SlotGenerator = async function* (request) {
       const slot = firstSlot(request);
-      yield `<${slot.id}>ok</${slot.id}>`;
+      yield `<${slot.id}>ok\n</${slot.id}>`;
     };
 
     const stream = slotObjectStreamFromGenerator(generate);
@@ -104,7 +107,7 @@ describe("SlotObjectStream web output", () => {
   it("can return an HTTP Response over low-level slot events", async () => {
     const generate: SlotGenerator = async function* (request) {
       const slot = firstSlot(request);
-      yield `<${slot.id}>ok</${slot.id}>`;
+      yield `<${slot.id}>ok\n</${slot.id}>`;
     };
 
     const stream = slotObjectStreamFromGenerator(generate);
@@ -127,7 +130,7 @@ describe("SlotObjectStream web output", () => {
     const generate: SlotGenerator = async function* (request) {
       const slot = firstSlot(request);
       const value = slot.attempt === 1 ? "" : "ok";
-      yield `<${slot.id}>${value}</${slot.id}>`;
+      yield `<${slot.id}>${value}\n</${slot.id}>`;
     };
 
     const stream = slotObjectStreamFromGenerator(generate);

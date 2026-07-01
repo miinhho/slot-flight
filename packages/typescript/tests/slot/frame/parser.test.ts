@@ -42,16 +42,29 @@ describe("SlotFrameParser", () => {
     );
   });
 
-  it("accepts inline opening and closing tags", () => {
+  it("rejects inline closing delimiters", () => {
     const parser = new SlotFrameParser(new Map([["1", "name"]]));
 
-    const events = parser.push("<1>Alice</1>");
+    parser.push("<1>Alice</1>");
+
+    expect(() => parser.finish()).toThrow(
+      "Slot stream ended before closing delimiter."
+    );
+  });
+
+  it("preserves tag-like text inside a value", () => {
+    const parser = new SlotFrameParser(new Map([["1", "name"]]));
+
+    const events = [
+      ...parser.push("<1>Alice </1> Cooper"),
+      ...parser.push("\n</1>")
+    ];
     parser.finish();
 
     expect(events).toContainEqual({
       type: "slot-complete",
       slot: "name",
-      value: "Alice"
+      value: "Alice </1> Cooper"
     });
   });
 
@@ -59,7 +72,7 @@ describe("SlotFrameParser", () => {
     const parser = new SlotFrameParser(new Map([["1", "name"]]));
 
     const events = [
-      ...parser.push("<1>Alice<"),
+      ...parser.push("<1>Alice\n<"),
       ...parser.push("/"),
       ...parser.push("1>")
     ];
@@ -85,7 +98,7 @@ describe("SlotFrameParser", () => {
   it("rejects trailing content after valid slot frames", () => {
     const parser = new SlotFrameParser(new Map([["1", "name"]]));
 
-    expect(() => parser.push("<1>Alice</1>extra")).toThrow(
+    expect(() => parser.push("<1>Alice\n</1>\nextra")).toThrow(
       'Expected slot id header but received "extra".'
     );
   });

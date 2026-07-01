@@ -42,9 +42,11 @@ describe("slot frame prompt", () => {
     expect(prompt).toContain("  attempt: 1");
     expect(prompt).toContain("  open: <1>");
     expect(prompt).toContain("  close: </1>");
-    expect(prompt).toContain("Prefer one-line frames");
-    expect(prompt).toContain("<1>raw slot value only</1>");
-    expect(prompt).toContain("immediately write the exact closing tag");
+    expect(prompt).toContain("Put each closing tag on its own line");
+    expect(prompt).toContain("raw slot value only");
+    expect(prompt).toContain(
+      "only treats a closing tag as a delimiter when it is the whole line"
+    );
     expect(prompt).toContain("Write one concise operational summary.");
     expect(prompt).toContain("- id: 2");
     expect(prompt).toContain("  path: tags");

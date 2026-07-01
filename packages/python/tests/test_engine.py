@@ -53,7 +53,7 @@ class SlotFlightTest(unittest.IsolatedAsyncioTestCase):
             requests.append([f"{slot.path}:{slot.attempt}" for slot in request.slots])
             for slot in request.slots:
                 value = "" if slot.path == "title" and slot.attempt == 1 else "valid"
-                yield f"<{slot.id}>{value}</{slot.id}>"
+                yield f"<{slot.id}>{value}\n</{slot.id}>"
 
         events = await collect_events(
             SlotFlight(
@@ -81,7 +81,7 @@ class SlotFlightTest(unittest.IsolatedAsyncioTestCase):
             requests.append([f"{slot.path}:{slot.attempt}" for slot in request.slots])
             for slot in request.slots:
                 value = '["billing",' if slot.attempt == 1 else '["billing","latency"]'
-                yield f"<{slot.id}>{value}</{slot.id}>"
+                yield f"<{slot.id}>{value}\n</{slot.id}>"
 
         events = await collect_events(
             SlotFlight(

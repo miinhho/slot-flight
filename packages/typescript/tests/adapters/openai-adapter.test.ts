@@ -22,9 +22,9 @@ describe("OpenAI adapter", () => {
           ) => {
             calls.push({ body, signal: options?.signal });
             return openAIChunks([
-              "<1>slot-flight</1>",
+              "<1>slot-flight\n</1>",
               { choices: [{ delta: { content: null } }] },
-              "<2>Function-style OpenAI adapter</2>"
+              "<2>Function-style OpenAI adapter\n</2>"
             ]);
           }
         }
@@ -72,7 +72,7 @@ describe("OpenAI adapter", () => {
         if (this.marker !== "bound") {
           throw new Error("lost receiver");
         }
-        return openAIChunks(["<1>Alice</1>"]);
+        return openAIChunks(["<1>Alice\n</1>"]);
       }
     };
     const client: OpenAIChatCompletionsClient = {
@@ -106,8 +106,8 @@ describe("OpenAI adapter", () => {
           ) => {
             calls.push({ body, signal: options?.signal });
             return openAIChunks([
-              "<1>slot-flight</1>",
-              "<2>OpenAI SDK add-on</2>"
+              "<1>slot-flight\n</1>",
+              "<2>OpenAI SDK add-on\n</2>"
             ]);
           }
         }
@@ -150,7 +150,7 @@ describe("OpenAI adapter", () => {
         completions: {
           create: () => {
             calls += 1;
-            return openAIChunks(["<1>Alice</1>"]);
+            return openAIChunks(["<1>Alice\n</1>"]);
           }
         }
       }
@@ -210,7 +210,7 @@ describe("OpenAI adapter", () => {
       chat: {
         completions: {
           create: () =>
-            openAIChunks(["<1>slot-flight</1>", "<2>Slot helper</2>"])
+            openAIChunks(["<1>slot-flight\n</1>", "<2>Slot helper\n</2>"])
         }
       }
     });

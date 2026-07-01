@@ -93,7 +93,7 @@ class SlotFrameParser:
 
         events: list[SlotFrameParserEvent] = []
         closing = f"</{self._current['id']}>"
-        closing_index = self._buffer.find(closing)
+        closing_index = _find_line_delimited_closing(self._buffer, closing)
 
         if closing_index != -1:
             delta = _strip_one_trailing_line_break(self._buffer[:closing_index])
@@ -120,13 +120,12 @@ class SlotFrameParser:
             self._state = "headers"
             return events, True
 
-        keep = len(closing) + 1
-        if len(self._buffer) <= keep:
+        keep_start = _find_value_flush_boundary(self._buffer, closing)
+        if keep_start == 0:
             return events, False
 
-        delta_end = len(self._buffer) - keep
-        delta = self._buffer[:delta_end]
-        self._buffer = self._buffer[delta_end:]
+        delta = self._buffer[:keep_start]
+        self._buffer = self._buffer[keep_start:]
         self._current["value"] += delta
         events.append(
             SlotFrameParserEvent(
@@ -156,3 +155,46 @@ def _strip_one_trailing_line_break(value: str) -> str:
     if value.endswith("\n"):
         return value[:-1]
     return value
+
+
+def _find_line_delimited_closing(buffer: str, closing: str) -> int:
+    search_from = 0
+    while True:
+        index = buffer.find(closing, search_from)
+        if index == -1:
+            return -1
+
+        starts_line = index == 0 or buffer[index - 1] == "\n"
+        after_index = index + len(closing)
+        at_line_end = (
+            after_index == len(buffer)
+            or buffer[after_index] == "\n"
+            or (
+                buffer[after_index] == "\r"
+                and after_index + 1 < len(buffer)
+                and buffer[after_index + 1] == "\n"
+            )
+        )
+        if starts_line and at_line_end:
+            return index
+
+        search_from = index + 1
+
+
+def _find_value_flush_boundary(buffer: str, closing: str) -> int:
+    last_line_break = buffer.rfind("\n")
+    if last_line_break != -1:
+        if last_line_break > 0 and buffer[last_line_break - 1] == "\r":
+            return last_line_break - 1
+        return last_line_break
+
+    if closing.startswith(buffer):
+        return 0
+
+    if buffer.startswith(f"{closing}\r"):
+        return 0
+
+    if buffer.endswith("\r"):
+        return len(buffer) - 1
+
+    return len(buffer)

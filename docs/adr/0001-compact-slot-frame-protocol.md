@@ -24,24 +24,26 @@ This was clear but verbose. In local `llama3:8b` comparisons, long headers incre
 Use compact slot ids and id-based closing tags:
 
 ```text
-<1>value</1>
-<2>value</2>
+<1>
+value
+</1>
+<2>
+value
+</2>
 ```
 
-For concise text values, prefer one-line frames so the closing tag follows the
-value immediately:
+The closing tag is a delimiter only when it is the entire line. This keeps
+tag-like text inside free-text values from accidentally terminating the frame:
 
 ```text
-<1>value</1>
+<1>
+value may mention </1> inline
+</1>
 ```
 
 The server maps slot ids to JSON paths for each frame stream request. The model never owns the JSON path. Unknown ids, duplicate ids, missing frames, invalid values, and cancellation are handled by the engine.
 
-The parser still accepts both inline and line-oriented frames:
-
-```text
-<1>value</1>
-```
+The parser accepts line-delimited frames:
 
 ```text
 <1>
@@ -53,6 +55,8 @@ value
 
 - Frame overhead is much lower than full path plus sentinel frames.
 - Smaller models copy XML-like tags more reliably than very terse `@1 ... @@` delimiters.
+- Closing delimiter recognition is line-oriented, so inline tag-like text is
+  preserved as value text instead of ending the frame early.
 - Slot ids are only stable inside one request. Callers should reason in JSON paths, not ids.
 - Failed or missing slots can be retried without regenerating successful slots.
 - Recoverable protocol failures, such as an unfinished frame, can be retried without retrying completed slots.

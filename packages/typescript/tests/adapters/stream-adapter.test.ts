@@ -9,7 +9,7 @@ describe("stream adapter", () => {
     const generate = createChunkStreamGenerator({
       stream: async function* () {
         yield { text: "<1>Ali" };
-        yield { text: "ce</1>" };
+        yield { text: "ce\n</1>" };
       },
       text: (chunk: { text: string }) => chunk.text
     });
@@ -33,7 +33,7 @@ describe("stream adapter", () => {
       stream: async function* () {
         yield { text: "<1>Ali" };
         yield { text: undefined };
-        yield { text: "ce</1>" };
+        yield { text: "ce\n</1>" };
       },
       text: (chunk: { text?: string }) => chunk.text ?? ""
     });

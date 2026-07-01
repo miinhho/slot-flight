@@ -115,7 +115,7 @@ export class SlotFrameParser {
 
     const events: SlotFrameParserEvent[] = [];
     const closing = `</${this.current.id}>`;
-    const closingIndex = this.buffer.indexOf(closing);
+    const closingIndex = findLineDelimitedClosing(this.buffer, closing);
 
     if (closingIndex !== -1) {
       const delta = stripOneTrailingLineBreak(
@@ -142,16 +142,15 @@ export class SlotFrameParser {
       return { events, completedFrame: true };
     }
 
-    // Keep a delimiter-sized suffix in the buffer so a close tag split across
-    // chunks is not accidentally emitted as value text.
-    const keep = closing.length + 1;
-    if (this.buffer.length <= keep) {
+    // Keep the possible delimiter line in the buffer so a close tag split
+    // across chunks is not accidentally emitted as value text.
+    const keepStart = findValueFlushBoundary(this.buffer, closing);
+    if (keepStart === 0) {
       return { events, completedFrame: false };
     }
 
-    const deltaEnd = this.buffer.length - keep;
-    const delta = this.buffer.slice(0, deltaEnd);
-    this.buffer = this.buffer.slice(deltaEnd);
+    const delta = this.buffer.slice(0, keepStart);
+    this.buffer = this.buffer.slice(keepStart);
     this.current.value += delta;
     events.push({
       type: "slot-delta",
@@ -185,4 +184,51 @@ function stripOneTrailingLineBreak(value: string): string {
     return value.slice(0, -1);
   }
   return value;
+}
+
+function findLineDelimitedClosing(buffer: string, closing: string): number {
+  let searchFrom = 0;
+  while (true) {
+    const index = buffer.indexOf(closing, searchFrom);
+    if (index === -1) {
+      return -1;
+    }
+
+    const startsLine = index === 0 || buffer[index - 1] === "\n";
+    const afterIndex = index + closing.length;
+    const atLineEnd =
+      afterIndex === buffer.length ||
+      buffer[afterIndex] === "\n" ||
+      (buffer[afterIndex] === "\r" && buffer[afterIndex + 1] === "\n");
+
+    if (startsLine && atLineEnd) {
+      return index;
+    }
+
+    searchFrom = index + 1;
+  }
+}
+
+function findValueFlushBoundary(buffer: string, closing: string): number {
+  const lastLineBreak = buffer.lastIndexOf("\n");
+  if (lastLineBreak !== -1) {
+    if (buffer[lastLineBreak - 1] === "\r") {
+      return lastLineBreak - 1;
+    }
+    return lastLineBreak;
+  }
+
+  if (closing.startsWith(buffer)) {
+    return 0;
+  }
+
+  if (buffer.startsWith(`${closing}\r`)) {
+    return 0;
+  }
+
+  if (buffer.endsWith("\r")) {
+    return buffer.length - 1;
+  }
+
+  return buffer.length;
 }

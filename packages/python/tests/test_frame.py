@@ -31,10 +31,38 @@ class SlotFrameParserTest(unittest.TestCase):
         with self.assertRaisesRegex(Exception, 'Received unregistered slot id "2"'):
             parser.push("<2>\nAlice\n</2>")
 
-    def test_accepts_inline_opening_and_closing_tags(self):
+    def test_rejects_inline_closing_delimiters(self):
         parser = SlotFrameParser({"1": "name"})
 
-        events = parser.push("<1>Alice</1>")
+        parser.push("<1>Alice</1>")
+
+        with self.assertRaisesRegex(
+            Exception, "Slot stream ended before closing delimiter."
+        ):
+            parser.finish()
+
+    def test_preserves_tag_like_text_inside_a_value(self):
+        parser = SlotFrameParser({"1": "name"})
+
+        events = [
+            *parser.push("<1>Alice </1> Cooper"),
+            *parser.push("\n</1>"),
+        ]
+        parser.finish()
+
+        self.assertIn(
+            ("slot-complete", "name", "Alice </1> Cooper"),
+            [(event.type, event.slot, event.value) for event in events],
+        )
+
+    def test_handles_closing_delimiters_split_across_streaming_chunks(self):
+        parser = SlotFrameParser({"1": "name"})
+
+        events = [
+            *parser.push("<1>Alice\n<"),
+            *parser.push("/"),
+            *parser.push("1>"),
+        ]
         parser.finish()
 
         self.assertIn(

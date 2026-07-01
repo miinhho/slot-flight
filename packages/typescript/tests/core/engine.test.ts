@@ -123,7 +123,7 @@ describe("SlotFlight", () => {
         })
       ]);
       const slot = firstSlot(request);
-      yield `<${slot.id}>["billing","latency","dashboard"]</${slot.id}>`;
+      yield `<${slot.id}>["billing","latency","dashboard"]\n</${slot.id}>`;
     };
 
     const events = await collectEvents(
@@ -162,7 +162,7 @@ describe("SlotFlight", () => {
           slot.path === "tags" && slot.attempt === 1
             ? '["billing",'
             : '["billing","latency"]';
-        yield `<${slot.id}>${value}</${slot.id}>`;
+        yield `<${slot.id}>${value}\n</${slot.id}>`;
       }
     };
 
@@ -226,7 +226,7 @@ describe("SlotFlight", () => {
         if (slot.path === "summary" && slot.attempt === 1) {
           continue;
         }
-        yield `<${slot.id}>${slot.path} value</${slot.id}>`;
+        yield `<${slot.id}>${slot.path} value\n</${slot.id}>`;
       }
     };
 
@@ -346,7 +346,7 @@ describe("SlotFlight", () => {
           yield `<${slot.id}>unfinished`;
           continue;
         }
-        yield `<${slot.id}>${slot.path} ok</${slot.id}>`;
+        yield `<${slot.id}>${slot.path} ok\n</${slot.id}>`;
       }
     };
 

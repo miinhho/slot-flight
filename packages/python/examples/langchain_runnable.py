@@ -18,11 +18,11 @@ async def main() -> None:
     output = slot_object(Summary)
 
     runnable = RunnableLambda(
-        lambda messages: "<1>Adapter contract</1><2>["
+        lambda messages: "<1>Adapter contract\n</1>\n<2>["
         '"uses LangChain Runnable streams",'
         '"keeps JSON assembly server-owned",'
         '"works with provider chat models"'
-        "]</2>"
+        "]\n</2>"
     )
 
     stream = stream_slot_object(
