@@ -11,9 +11,9 @@ describe("Vercel AI SDK adapter", () => {
       calls.push(body);
       return {
         textStream: textChunks([
-          "<1>First useful field appears early.</1>",
-          "<2>mixed</2>",
-          "<3>high</3>"
+          "<1>First useful field appears early.\n</1>",
+          "<2>mixed\n</2>",
+          "<3>high\n</3>"
         ])
       };
     };
@@ -67,7 +67,7 @@ describe("Vercel AI SDK adapter", () => {
     const stream = streamSlotObject({
       streamText: (body: Record<string, unknown>) => {
         calls.push(body);
-        return { textStream: textChunks(["<1>ok</1>"]) };
+        return { textStream: textChunks(["<1>ok\n</1>"]) };
       },
       model: "model-ref",
       prompt: "Analyze customer feedback.",
@@ -96,7 +96,7 @@ describe("Vercel AI SDK adapter", () => {
     const stream = streamSlotObject({
       streamText: (body: Record<string, unknown>) => {
         signals.push(body.abortSignal as AbortSignal);
-        return { textStream: textChunks(["<1>ok</1>"]) };
+        return { textStream: textChunks(["<1>ok\n</1>"]) };
       },
       model: "model-ref",
       prompt: "Analyze customer feedback.",
@@ -136,8 +136,8 @@ describe("Vercel AI SDK adapter", () => {
     const stream = streamSlotObject({
       streamText: () => ({
         textStream: textChunks([
-          "<1>First useful field appears early.</1>",
-          "<2>mixed</2>"
+          "<1>First useful field appears early.\n</1>",
+          "<2>mixed\n</2>"
         ])
       }),
       model: "model-ref",

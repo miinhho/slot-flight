@@ -34,18 +34,16 @@ def default_slot_frame_prompt(slots: list[SlotFrameRequest]) -> str:
         - Emit exactly one frame for each requested slot.
         - Emit frames in the same order as the slot list.
         - Copy each open and close tag exactly.
+        - Put each closing tag on its own line with no other text on that line.
         - Do not emit unrequested ids, JSON paths, markdown, code fences, commentary, bullets, or explanations.
         - Do not omit a frame. If a value is uncertain, make the best valid value for that slot.
-        - Do not include a closing tag string inside a value.
 
         FRAME SHAPE
-        - Prefer one-line frames for concise values:
-        <1>raw slot value only</1>
-        - Use multiline frames only when the value itself needs multiple lines:
         <1>
-        raw multiline slot value only
+        raw slot value only
         </1>
-        - After writing a value, immediately write the exact closing tag for that id.
+        - The parser only treats a closing tag as a delimiter when it is the whole line.
+        - Inline text like "hello </1> world" is value text, not a delimiter.
 
         VALUE RULES
         - For mode: text, emit the raw value only. Do not wrap it in quotes unless quotes are part of the value.

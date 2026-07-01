@@ -8,9 +8,15 @@ validates each value, retries failed slots, and assembles the final object
 itself.
 
 ```text
-<1>Alice</1>
-<2>Senior Engineer</2>
-<3>Builds streaming JSON assembly engines.</3>
+<1>
+Alice
+</1>
+<2>
+Senior Engineer
+</2>
+<3>
+Builds streaming JSON assembly engines.
+</3>
 ```
 
 ## Repository Layout

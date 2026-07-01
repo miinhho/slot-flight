@@ -26,6 +26,8 @@ The slot protocol is the streaming envelope around a slot value:
 
 The protocol identifies which slot id is being streamed and where the value ends. The server maps slot ids to JSON paths, discards the envelope, and treats only `<value>` as model output.
 
+The closing tag is recognized only when it is the entire delimiter line; inline tag-like text inside `<value>` remains part of the value.
+
 ### Slot Execution
 
 Slot execution is one concrete slot path moving through frame parsing, partial state updates, validation, and retry. Failed slots can be requested again in a follow-up slot frame stream without regenerating slots that already passed validation.

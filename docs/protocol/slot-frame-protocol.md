@@ -4,13 +4,19 @@ The slot frame protocol is the language-neutral contract shared by slot-flight
 SDKs.
 
 ```text
-<1>Alice</1>
-<2>Senior Engineer</2>
+<1>
+Alice
+</1>
+<2>
+Senior Engineer
+</2>
 ```
 
 ## Rules
 
-- A frame starts with `<id>` and ends with `</id>`.
+- A frame starts with `<id>` and ends with `</id>` on its own line.
+- A closing tag is a delimiter only when it is the entire line. Inline text such
+  as `hello </1> world` remains part of the frame body.
 - `id` is a positive decimal string assigned by the SDK for one frame request.
 - The server maps frame ids to JSON paths; models must not own JSON paths.
 - A frame body is either raw text or one JSON value, depending on the slot mode.
