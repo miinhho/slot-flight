@@ -36,6 +36,7 @@ and the customer needs a reliable ETA before their billing review.
             }
         ],
         output=slot_object(Triage),
+        timeout=float(os.getenv("HTTP_TIMEOUT", "60")),
         max_tokens=8192,
         temperature=1,
         top_p=0.95,

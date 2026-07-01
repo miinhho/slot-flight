@@ -1,6 +1,7 @@
 import unittest
 from types import SimpleNamespace
 from typing import Any
+from unittest.mock import patch
 
 from pydantic import BaseModel, Field
 
@@ -104,6 +105,7 @@ class AdapterTest(unittest.IsolatedAsyncioTestCase):
             model="minimaxai/minimax-m3",
             messages=[{"role": "user", "content": "Classify this."}],
             output=slot_object(Summary),
+            timeout=0.01,
             temperature=0.2,
         )
 
@@ -190,6 +192,63 @@ class AdapterTest(unittest.IsolatedAsyncioTestCase):
             'HTTP 401: \\{"error":"bad api key"\\}',
         ):
             await stream.final_object()
+
+    async def test_openai_compatible_adapter_uses_bounded_default_timeout(self):
+        FakeHTTPXAsyncClient.reset(
+            [
+                'data: {"choices":[{"delta":{"content":"<1>Hello\\n</1>"}}]}',
+                (
+                    'data: {"choices":[{"delta":{"content":'
+                    '"<2>[\\"a\\",\\"b\\"]\\n</2>"}}]}'
+                ),
+                "data: [DONE]",
+            ]
+        )
+
+        with patch("httpx.AsyncClient", FakeHTTPXAsyncClient):
+            stream = openai_compatible_stream(
+                base_url="https://integrate.api.nvidia.com/v1",
+                model="minimaxai/minimax-m3",
+                messages=[{"role": "user", "content": "Classify this."}],
+                output=slot_object(Summary),
+            )
+
+            self.assertEqual(
+                await stream.final_object(),
+                Summary(title="Hello", tags=["a", "b"]),
+            )
+
+        created = FakeHTTPXAsyncClient.created[0]
+        self.assertEqual(created.timeout.connect, 10.0)
+        self.assertEqual(created.timeout.read, 60.0)
+        self.assertEqual(created.timeout.write, 60.0)
+        self.assertEqual(created.timeout.pool, 60.0)
+
+    async def test_openai_compatible_adapter_allows_disabling_timeout(self):
+        FakeHTTPXAsyncClient.reset(
+            [
+                'data: {"choices":[{"delta":{"content":"<1>Hello\\n</1>"}}]}',
+                'data: {"choices":[{"delta":{"content":"<2>[]\\n</2>"}}]}',
+                "data: [DONE]",
+            ]
+        )
+
+        with patch("httpx.AsyncClient", FakeHTTPXAsyncClient):
+            stream = openai_compatible_stream(
+                base_url="https://integrate.api.nvidia.com/v1",
+                model="minimaxai/minimax-m3",
+                messages=[{"role": "user", "content": "Classify this."}],
+                output=slot_object(Summary),
+                timeout=None,
+            )
+
+            self.assertEqual(
+                await stream.final_object(),
+                Summary(title="Hello", tags=[]),
+            )
+
+        created = FakeHTTPXAsyncClient.created[0]
+        self.assertIsNone(created.timeout)
 
     async def test_langchain_adapter_streams_slot_object(self):
         runnable = FakeRunnable(["<1>Hello\n</1>", '<2>["a","b"]\n</2>'])
@@ -338,6 +397,37 @@ class FakeOpenAICompatibleResponse:
     async def aiter_lines(self):
         for line in self._lines:
             yield line
+
+
+class FakeHTTPXAsyncClient:
+    lines = []
+    created = []
+
+    def __init__(self, *, timeout):
+        self.timeout = timeout
+        self.method: str | None = None
+        self.url: str | None = None
+        self.headers: dict[str, str] | None = None
+        self.payload: dict[str, Any] | None = None
+        self.created.append(self)
+
+    @classmethod
+    def reset(cls, lines):
+        cls.lines = lines
+        cls.created = []
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, traceback):
+        return False
+
+    def stream(self, method, url, *, headers, json):
+        self.method = method
+        self.url = url
+        self.headers = headers
+        self.payload = json
+        return FakeOpenAICompatibleResponse(self.lines)
 
 
 class FakeRunnable:

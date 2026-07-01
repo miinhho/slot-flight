@@ -128,7 +128,9 @@ uv run --extra langchain examples/langchain_runnable.py
 
 The OpenAI SDK example and raw OpenAI-compatible HTTP example both work with
 endpoints such as NVIDIA NIM: set `API_KEY`, `API_BASE_URL`, and `MODEL` as
-shown in the root `.env.example`.
+shown in the root `.env.example`. The raw HTTP adapter uses a bounded HTTPX
+timeout by default; pass `timeout=None` to disable it, or pass a custom
+`httpx.AsyncClient` as `client` when you want to own HTTP settings directly.
 
 ## Development
 
