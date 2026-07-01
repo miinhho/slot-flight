@@ -84,7 +84,7 @@ async def _stream_chat_completion_chunks(
         ) from error
 
     async with httpx.AsyncClient(
-        timeout=_normalize_timeout(httpx, timeout)
+        timeout=_resolve_httpx_timeout(httpx, timeout)
     ) as http_client:
         async for chunk in _stream_with_client(
             client=http_client,
@@ -95,7 +95,7 @@ async def _stream_chat_completion_chunks(
             yield chunk
 
 
-def _normalize_timeout(httpx: Any, timeout: Any) -> Any:
+def _resolve_httpx_timeout(httpx: Any, timeout: Any) -> Any:
     if timeout is None or isinstance(timeout, httpx.Timeout):
         return timeout
     if isinstance(timeout, int | float):
