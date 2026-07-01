@@ -5,19 +5,32 @@ export type SlotFrameParserEvent =
   | { type: "slot-delta"; slot: string; delta: string; value: string }
   | { type: "slot-complete"; slot: string; value: string };
 
-export class SlotFrameParser {
-  private state: "headers" | "value" = "headers";
-  private buffer = "";
-  private current:
-    | {
-        id: string;
-        path: string;
-        value: string;
-      }
-    | undefined;
-  private readonly completed = new Set<string>();
+const PROTOCOL_ERROR_PREVIEW_LENGTH = 160;
+const HEADER_PATTERN = /^<(?<id>\d+)>/;
+const PARTIAL_HEADER_PATTERN = /^<\d*$/;
 
-  constructor(private readonly slotsById: Map<string, string>) {}
+type ParserState = "headers" | "value";
+
+interface CurrentFrame {
+  id: string;
+  path: string;
+  value: string;
+  allowsImmediateClosing: boolean;
+}
+
+export class SlotFrameParser {
+  private state: ParserState = "headers";
+  private buffer = "";
+  private current: CurrentFrame | undefined;
+  private readonly completed = new Set<string>();
+  private readonly maxSlotIdDigits: number;
+
+  constructor(private readonly slotsById: Map<string, string>) {
+    this.maxSlotIdDigits = Math.max(
+      1,
+      ...Array.from(slotsById.keys(), (id) => id.length)
+    );
+  }
 
   push(chunk: string): SlotFrameParserEvent[] {
     this.buffer += chunk;
@@ -30,20 +43,15 @@ export class SlotFrameParser {
           return events;
         }
 
-        const headerMatch = /^<(?<id>\d+)>/.exec(this.buffer);
+        const headerMatch = HEADER_PATTERN.exec(this.buffer);
         if (headerMatch?.groups === undefined) {
           // Chunks can split a header after "<" or the id digits. Wait for
           // more bytes before treating the buffered prefix as invalid output.
           if (this.mightBePartialHeader()) {
             return events;
           }
-          const slotLineEnd = this.buffer.indexOf("\n");
-          const received =
-            slotLineEnd === -1
-              ? this.buffer
-              : this.buffer.slice(0, slotLineEnd);
           throw new SlotFlightSlotProtocolError(
-            `Expected slot id header but received "${received}".`,
+            `Expected slot id header but received ${formatProtocolPreview(this.headerPreview())}.`,
             true
           );
         }
@@ -68,13 +76,12 @@ export class SlotFrameParser {
           );
         }
 
-        this.current = { id, path, value: "" };
-        this.buffer = this.buffer.slice(header.length);
-        if (this.buffer.startsWith("\r\n")) {
-          this.buffer = this.buffer.slice(2);
-        } else if (this.buffer.startsWith("\n")) {
-          this.buffer = this.buffer.slice(1);
-        }
+        this.current = {
+          id,
+          path,
+          value: "",
+          allowsImmediateClosing: this.consumeOpeningLineBreak(header.length)
+        };
         this.state = "value";
         events.push({ type: "slot-start", slot: path });
       }
@@ -99,7 +106,7 @@ export class SlotFrameParser {
     }
     if (this.buffer.length > 0) {
       throw new SlotFlightSlotProtocolError(
-        `Unexpected trailing content after slot frames: "${this.buffer}".`,
+        `Unexpected trailing content after slot frames: ${formatProtocolPreview(this.buffer)}.`,
         true
       );
     }
@@ -115,7 +122,11 @@ export class SlotFrameParser {
 
     const events: SlotFrameParserEvent[] = [];
     const closing = `</${this.current.id}>`;
-    const closingIndex = findLineDelimitedClosing(this.buffer, closing);
+    const closingIndex = findLineDelimitedClosing(
+      this.buffer,
+      closing,
+      this.current.allowsImmediateClosing
+    );
 
     if (closingIndex !== -1) {
       const delta = stripOneTrailingLineBreak(
@@ -170,7 +181,28 @@ export class SlotFrameParser {
   }
 
   private mightBePartialHeader(): boolean {
-    return /^<\d*$/.test(this.buffer);
+    return (
+      this.buffer.length <= this.maxSlotIdDigits + 1 &&
+      PARTIAL_HEADER_PATTERN.test(this.buffer)
+    );
+  }
+
+  private headerPreview(): string {
+    const slotLineEnd = this.buffer.indexOf("\n");
+    return slotLineEnd === -1 ? this.buffer : this.buffer.slice(0, slotLineEnd);
+  }
+
+  private consumeOpeningLineBreak(headerLength: number): boolean {
+    this.buffer = this.buffer.slice(headerLength);
+    if (this.buffer.startsWith("\r\n")) {
+      this.buffer = this.buffer.slice(2);
+      return true;
+    }
+    if (this.buffer.startsWith("\n")) {
+      this.buffer = this.buffer.slice(1);
+      return true;
+    }
+    return false;
   }
 }
 
@@ -186,7 +218,11 @@ function stripOneTrailingLineBreak(value: string): string {
   return value;
 }
 
-function findLineDelimitedClosing(buffer: string, closing: string): number {
+function findLineDelimitedClosing(
+  buffer: string,
+  closing: string,
+  allowAtStart: boolean
+): number {
   let searchFrom = 0;
   while (true) {
     const index = buffer.indexOf(closing, searchFrom);
@@ -194,7 +230,8 @@ function findLineDelimitedClosing(buffer: string, closing: string): number {
       return -1;
     }
 
-    const startsLine = index === 0 || buffer[index - 1] === "\n";
+    const startsLine =
+      (index === 0 && allowAtStart) || buffer[index - 1] === "\n";
     const afterIndex = index + closing.length;
     const atLineEnd =
       afterIndex === buffer.length ||
@@ -231,4 +268,12 @@ function findValueFlushBoundary(buffer: string, closing: string): number {
   }
 
   return buffer.length;
+}
+
+function formatProtocolPreview(value: string): string {
+  const escaped = value.replaceAll("\r", "\\r").replaceAll("\n", "\\n");
+  if (escaped.length <= PROTOCOL_ERROR_PREVIEW_LENGTH) {
+    return `"${escaped}"`;
+  }
+  return `"${escaped.slice(0, PROTOCOL_ERROR_PREVIEW_LENGTH)}..." (length ${value.length})`;
 }

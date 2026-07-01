@@ -6,6 +6,10 @@ from typing import Literal
 
 from .errors import SlotFlightSlotProtocolError
 
+_PROTOCOL_ERROR_PREVIEW_LENGTH = 160
+_HEADER_PATTERN = re.compile(r"^<(?P<id>\d+)>")
+_PARTIAL_HEADER_PATTERN = re.compile(r"^<\d*$")
+
 
 @dataclass(frozen=True)
 class SlotFrameParserEvent:
@@ -15,13 +19,22 @@ class SlotFrameParserEvent:
     value: str = ""
 
 
+@dataclass
+class _CurrentFrame:
+    id: str
+    path: str
+    value: str = ""
+    allows_immediate_closing: bool = False
+
+
 class SlotFrameParser:
     def __init__(self, slots_by_id: dict[str, str]):
         self._slots_by_id = slots_by_id
         self._state: Literal["headers", "value"] = "headers"
         self._buffer = ""
-        self._current: dict[str, str] | None = None
+        self._current: _CurrentFrame | None = None
         self._completed: set[str] = set()
+        self._max_slot_id_digits = max(1, *(len(slot_id) for slot_id in slots_by_id))
 
     def push(self, chunk: str) -> list[SlotFrameParserEvent]:
         self._buffer += chunk
@@ -33,16 +46,13 @@ class SlotFrameParser:
                 if self._buffer == "":
                     return events
 
-                header_match = re.match(r"^<(?P<id>\d+)>", self._buffer)
+                header_match = _HEADER_PATTERN.match(self._buffer)
                 if header_match is None:
                     if self._might_be_partial_header():
                         return events
-                    line_end = self._buffer.find("\n")
-                    received = (
-                        self._buffer if line_end == -1 else self._buffer[:line_end]
-                    )
                     raise SlotFlightSlotProtocolError(
-                        f'Expected slot id header but received "{received}".',
+                        "Expected slot id header but received "
+                        f"{_format_protocol_preview(self._header_preview())}.",
                         True,
                     )
 
@@ -59,12 +69,13 @@ class SlotFrameParser:
                         False,
                     )
 
-                self._current = {"id": slot_id, "path": path, "value": ""}
-                self._buffer = self._buffer[len(header_match.group(0)) :]
-                if self._buffer.startswith("\r\n"):
-                    self._buffer = self._buffer[2:]
-                elif self._buffer.startswith("\n"):
-                    self._buffer = self._buffer[1:]
+                self._current = _CurrentFrame(
+                    id=slot_id,
+                    path=path,
+                    allows_immediate_closing=self._consume_opening_line_break(
+                        len(header_match.group(0))
+                    ),
+                )
                 self._state = "value"
                 events.append(SlotFrameParserEvent(type="slot-start", slot=path))
 
@@ -83,7 +94,8 @@ class SlotFrameParser:
             )
         if self._buffer:
             raise SlotFlightSlotProtocolError(
-                f'Unexpected trailing content after slot frames: "{self._buffer}".',
+                "Unexpected trailing content after slot frames: "
+                f"{_format_protocol_preview(self._buffer)}.",
                 True,
             )
 
@@ -92,29 +104,33 @@ class SlotFrameParser:
             return [], False
 
         events: list[SlotFrameParserEvent] = []
-        closing = f"</{self._current['id']}>"
-        closing_index = _find_line_delimited_closing(self._buffer, closing)
+        closing = f"</{self._current.id}>"
+        closing_index = _find_line_delimited_closing(
+            self._buffer,
+            closing,
+            self._current.allows_immediate_closing,
+        )
 
         if closing_index != -1:
             delta = _strip_one_trailing_line_break(self._buffer[:closing_index])
             if delta:
-                self._current["value"] += delta
+                self._current.value += delta
                 events.append(
                     SlotFrameParserEvent(
                         type="slot-delta",
-                        slot=self._current["path"],
+                        slot=self._current.path,
                         delta=delta,
-                        value=self._current["value"],
+                        value=self._current.value,
                     )
                 )
             events.append(
                 SlotFrameParserEvent(
                     type="slot-complete",
-                    slot=self._current["path"],
-                    value=self._current["value"],
+                    slot=self._current.path,
+                    value=self._current.value,
                 )
             )
-            self._completed.add(self._current["path"])
+            self._completed.add(self._current.path)
             self._buffer = self._buffer[closing_index + len(closing) :]
             self._current = None
             self._state = "headers"
@@ -126,13 +142,13 @@ class SlotFrameParser:
 
         delta = self._buffer[:keep_start]
         self._buffer = self._buffer[keep_start:]
-        self._current["value"] += delta
+        self._current.value += delta
         events.append(
             SlotFrameParserEvent(
                 type="slot-delta",
-                slot=self._current["path"],
+                slot=self._current.path,
                 delta=delta,
-                value=self._current["value"],
+                value=self._current.value,
             )
         )
         return events, False
@@ -146,7 +162,24 @@ class SlotFrameParser:
             )
 
     def _might_be_partial_header(self) -> bool:
-        return re.match(r"^<\d*$", self._buffer) is not None
+        return (
+            len(self._buffer) <= self._max_slot_id_digits + 1
+            and _PARTIAL_HEADER_PATTERN.match(self._buffer) is not None
+        )
+
+    def _header_preview(self) -> str:
+        line_end = self._buffer.find("\n")
+        return self._buffer if line_end == -1 else self._buffer[:line_end]
+
+    def _consume_opening_line_break(self, header_length: int) -> bool:
+        self._buffer = self._buffer[header_length:]
+        if self._buffer.startswith("\r\n"):
+            self._buffer = self._buffer[2:]
+            return True
+        if self._buffer.startswith("\n"):
+            self._buffer = self._buffer[1:]
+            return True
+        return False
 
 
 def _strip_one_trailing_line_break(value: str) -> str:
@@ -157,14 +190,18 @@ def _strip_one_trailing_line_break(value: str) -> str:
     return value
 
 
-def _find_line_delimited_closing(buffer: str, closing: str) -> int:
+def _find_line_delimited_closing(
+    buffer: str,
+    closing: str,
+    allow_at_start: bool,
+) -> int:
     search_from = 0
     while True:
         index = buffer.find(closing, search_from)
         if index == -1:
             return -1
 
-        starts_line = index == 0 or buffer[index - 1] == "\n"
+        starts_line = (index == 0 and allow_at_start) or buffer[index - 1] == "\n"
         after_index = index + len(closing)
         at_line_end = (
             after_index == len(buffer)
@@ -198,3 +235,10 @@ def _find_value_flush_boundary(buffer: str, closing: str) -> int:
         return len(buffer) - 1
 
     return len(buffer)
+
+
+def _format_protocol_preview(value: str) -> str:
+    escaped = value.replace("\r", "\\r").replace("\n", "\\n")
+    if len(escaped) <= _PROTOCOL_ERROR_PREVIEW_LENGTH:
+        return f'"{escaped}"'
+    return f'"{escaped[:_PROTOCOL_ERROR_PREVIEW_LENGTH]}..." (length {len(value)})'

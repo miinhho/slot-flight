@@ -52,6 +52,29 @@ describe("SlotFrameParser", () => {
     );
   });
 
+  it("rejects inline empty closing delimiters", () => {
+    const parser = new SlotFrameParser(new Map([["1", "name"]]));
+
+    parser.push("<1></1>");
+
+    expect(() => parser.finish()).toThrow(
+      "Slot stream ended before closing delimiter."
+    );
+  });
+
+  it("accepts empty values with a line-delimited closing tag", () => {
+    const parser = new SlotFrameParser(new Map([["1", "name"]]));
+
+    const events = parser.push("<1>\n</1>");
+    parser.finish();
+
+    expect(events).toContainEqual({
+      type: "slot-complete",
+      slot: "name",
+      value: ""
+    });
+  });
+
   it("preserves tag-like text inside a value", () => {
     const parser = new SlotFrameParser(new Map([["1", "name"]]));
 
@@ -110,5 +133,28 @@ describe("SlotFrameParser", () => {
     expect(() => parser.push("\n<1>\nAlice again\n</1>")).toThrow(
       'Received duplicate slot "name"'
     );
+  });
+
+  it("rejects partial headers longer than the registered slot id width", () => {
+    const parser = new SlotFrameParser(new Map([["1", "name"]]));
+
+    expect(() => parser.push("<12")).toThrow(
+      'Expected slot id header but received "<12".'
+    );
+  });
+
+  it("truncates long protocol error previews", () => {
+    const parser = new SlotFrameParser(new Map([["1", "name"]]));
+    const input = `<${"1".repeat(200)}`;
+
+    let message = "";
+    try {
+      parser.push(input);
+    } catch (error) {
+      message = (error as Error).message;
+    }
+
+    expect(message).toContain("length 201");
+    expect(message).not.toContain(input);
   });
 });
