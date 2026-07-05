@@ -71,6 +71,12 @@ function inferSlotAtPathWithPrompts(
     return inferArraySlots(unwrapped, path, prompts);
   }
 
+  if (unwrapped instanceof z.ZodRecord || unwrapped instanceof z.ZodMap) {
+    throw new SlotFlightConfigurationError(
+      `Schema field "${path}" cannot infer structural slots for dynamic object or map values.`
+    );
+  }
+
   const slotPrompt = prompts.join("\n");
   if (slotPrompt !== "") {
     return [
@@ -106,6 +112,12 @@ function inferArraySlots(
   if (itemSchema instanceof z.ZodArray) {
     throw new SlotFlightConfigurationError(
       `Array field "${path}" cannot infer structural slots for nested array items.`
+    );
+  }
+
+  if (itemSchema instanceof z.ZodRecord || itemSchema instanceof z.ZodMap) {
+    throw new SlotFlightConfigurationError(
+      `Array field "${path}" cannot infer structural slots for dynamic object or map items.`
     );
   }
 

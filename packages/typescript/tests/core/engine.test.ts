@@ -200,6 +200,48 @@ describe("SlotFlight", () => {
     });
   });
 
+  it("retries a repeatable field when final array validation fails", async () => {
+    const requests: string[][] = [];
+    const generate: SlotGenerator = async function* (request) {
+      requests.push(
+        request.slots.map((slot) => `${slot.path}:${slot.attempt}`)
+      );
+      const slot = firstSlot(request);
+      yield `<${slot.id}:0>first\n</${slot.id}:0>`;
+      if (slot.attempt === 2) {
+        yield `<${slot.id}:1>second\n</${slot.id}:1>`;
+      }
+    };
+
+    const events = await collectEvents(
+      slotFlight({
+        schema: z.object({
+          tags: z.array(z.string().min(1)).length(2)
+        }),
+        generate,
+        slots: [
+          {
+            path: "tags[]",
+            schema: z.string().min(1)
+          }
+        ],
+        maxRetries: 1
+      }).run()
+    );
+
+    expect(requests).toEqual([["tags[]:1"], ["tags[]:2"]]);
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "slot-retry",
+        slot: "tags[]"
+      })
+    );
+    expect(events.at(-1)).toMatchObject({
+      type: "done",
+      state: { tags: ["first", "second"] }
+    });
+  });
+
   it("streams object array fields without JSON blob slots", async () => {
     const generate: SlotGenerator = async function* (request) {
       expect(request.slots).toEqual([
@@ -332,6 +374,73 @@ describe("SlotFlight", () => {
         sections: [
           { heading: "Intro", body: "New opening" },
           { heading: "Details", body: "New detail" }
+        ]
+      }
+    });
+  });
+
+  it("retries a missing object-array field from final validation", async () => {
+    const requests: string[][] = [];
+    const generate: SlotGenerator = async function* (request) {
+      requests.push(
+        request.slots.map((slot) => `${slot.path}:${slot.attempt}`)
+      );
+      const heading = request.slots.find(
+        (slot) => slot.path === "sections[].heading"
+      );
+      const body = request.slots.find(
+        (slot) => slot.path === "sections[].body"
+      );
+
+      if (heading !== undefined) {
+        yield `<${heading.id}:0>Intro\n</${heading.id}:0>`;
+        yield `<${heading.id}:1>Details\n</${heading.id}:1>`;
+      }
+      if (body !== undefined) {
+        yield `<${body.id}:0>Opening\n</${body.id}:0>`;
+        if (body.attempt === 2) {
+          yield `<${body.id}:1>More detail\n</${body.id}:1>`;
+        }
+      }
+    };
+
+    const events = await collectEvents(
+      slotFlight({
+        schema: z.object({
+          sections: z
+            .array(
+              z.object({
+                heading: z.string().min(1),
+                body: z.string().min(1)
+              })
+            )
+            .length(2)
+        }),
+        generate,
+        maxRetries: 1,
+        slots: [
+          {
+            path: "sections[].heading",
+            schema: z.string().min(1)
+          },
+          {
+            path: "sections[].body",
+            schema: z.string().min(1)
+          }
+        ]
+      }).run()
+    );
+
+    expect(requests).toEqual([
+      ["sections[].heading:1", "sections[].body:1"],
+      ["sections[].body:2"]
+    ]);
+    expect(events.at(-1)).toMatchObject({
+      type: "done",
+      state: {
+        sections: [
+          { heading: "Intro", body: "Opening" },
+          { heading: "Details", body: "More detail" }
         ]
       }
     });

@@ -85,6 +85,16 @@ class SlotObjectTest(unittest.IsolatedAsyncioTestCase):
         ):
             slot_object(MissingDescription)
 
+    def test_rejects_dynamic_mapping_fields(self):
+        class DynamicPayload(BaseModel):
+            payload: dict[str, str] = Field(description="Write payload fields.")
+
+        with self.assertRaisesRegex(
+            SlotFlightConfigurationError,
+            'Pydantic field "payload" cannot infer structural slots',
+        ):
+            slot_object(DynamicPayload)
+
     def test_rejects_non_pydantic_models(self):
         with self.assertRaisesRegex(
             SlotFlightConfigurationError,

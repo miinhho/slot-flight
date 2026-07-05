@@ -48,7 +48,8 @@ export interface SlotDefinition<TValue = unknown> {
    * Slot path inside the server-owned JSON document.
    *
    * Examples: "title", "summary", "tags[]", "sections[].heading".
-   * Paths with [] require count, which expands them into concrete item paths.
+   * Paths with [] are repeatable unless count is set; count expands them into
+   * fixed concrete item paths.
    */
   path: string;
   prompt?: string | ((slot: SlotFrameRequest) => string);

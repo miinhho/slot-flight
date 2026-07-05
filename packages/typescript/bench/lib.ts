@@ -48,10 +48,10 @@ const valueByPath: Record<string, string> = {
 export const articleGenerator: SlotGenerator = async function* (request) {
   for (const slot of request.slots) {
     if (slot.path === "tags[]") {
-      for (const tag of ["streaming", "json", "zod"]) {
-        yield `<${slot.id}>`;
+      for (const [index, tag] of ["streaming", "json", "zod"].entries()) {
+        yield `<${slot.id}:${String(index)}>`;
         yield tag;
-        yield `\n</${slot.id}>`;
+        yield `\n</${slot.id}:${String(index)}>`;
       }
       continue;
     }

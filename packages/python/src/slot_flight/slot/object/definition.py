@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping, MutableMapping
 from dataclasses import dataclass
 from typing import Any, get_args, get_origin
 
@@ -93,11 +94,22 @@ def _infer_annotation_slots(
     if nested is not None:
         return _infer_slots(nested, path, prompts)
 
+    if _mapping_annotation(annotation):
+        raise SlotFlightConfigurationError(
+            f'Pydantic field "{path}" cannot infer structural slots '
+            "for dynamic mapping values."
+        )
+
     item_annotation = _list_item_annotation(annotation)
     if item_annotation is not None:
         nested_item = _model_type(item_annotation)
         if nested_item is not None:
             return _infer_slots(nested_item, f"{path}[]", prompts)
+        if _mapping_annotation(item_annotation):
+            raise SlotFlightConfigurationError(
+                f'Array field "{path}" cannot infer structural slots '
+                "for dynamic mapping items."
+            )
         if _list_item_annotation(item_annotation) is not None:
             raise SlotFlightConfigurationError(
                 f'Array field "{path}" cannot infer structural slots '
@@ -139,6 +151,11 @@ def _list_item_annotation(annotation: Any) -> Any | None:
         args = get_args(annotation)
         return args[0] if args else Any
     return None
+
+
+def _mapping_annotation(annotation: Any) -> bool:
+    origin = get_origin(annotation)
+    return annotation is dict or origin in {dict, Mapping, MutableMapping}
 
 
 def _model_type(annotation: Any) -> type[BaseModel] | None:

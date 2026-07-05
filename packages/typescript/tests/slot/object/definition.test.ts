@@ -70,4 +70,16 @@ describe("slotObject definitions", () => {
       })
     ).toThrow(SlotFlightConfigurationError);
   });
+
+  it("rejects dynamic object fields", () => {
+    expect(() =>
+      slotObject({
+        schema: z.object({
+          payload: z
+            .record(z.string(), z.string())
+            .describe("Write payload fields.")
+        })
+      })
+    ).toThrow(SlotFlightConfigurationError);
+  });
 });

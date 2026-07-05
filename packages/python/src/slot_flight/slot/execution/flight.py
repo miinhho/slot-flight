@@ -42,30 +42,49 @@ class SlotFlight:
         attempts = {slot.path: 1 for slot in self._slots}
         pending = list(self._slots)
 
-        while pending:
-            request = build_slot_flight_request(pending, attempts, self._prompt)
-            outcome = SlotAttemptOutcome(completed=set(), failures={})
+        while True:
+            while pending:
+                request = build_slot_flight_request(pending, attempts, self._prompt)
+                outcome = SlotAttemptOutcome(completed=set(), failures={})
 
-            attempt_events = self._run_attempt(
-                request=request,
-                pending=pending,
-                attempts=attempts,
-                state=state,
-                outcome=outcome,
-            )
-            try:
-                async for event in attempt_events:
+                attempt_events = self._run_attempt(
+                    request=request,
+                    pending=pending,
+                    attempts=attempts,
+                    state=state,
+                    outcome=outcome,
+                )
+                try:
+                    async for event in attempt_events:
+                        yield event
+                finally:
+                    await close_stream(attempt_events)
+
+                mark_missing_slots_as_failures(pending, outcome)
+
+                # Retry scope is slot-level: completed slots stay in state and only
+                # failed or missing slots are requested again.
+                pending = []
+                for event, retry_slot in slot_failure_events(
+                    pending=self._slots,
+                    attempts=attempts,
+                    outcome=outcome,
+                    state=state,
+                    default_max_retries=self._max_retries,
+                ):
                     yield event
-            finally:
-                await close_stream(attempt_events)
+                    if retry_slot is not None:
+                        pending.append(retry_slot)
 
-            mark_missing_slots_as_failures(pending, outcome)
-
-            # Retry scope is slot-level: completed slots stay in state and only
-            # failed or missing slots are requested again.
-            next_pending: list[CompiledSlot] = []
+            _ensure_repeatable_arrays(state, self._slots)
+            outcome = _repeat_validation_failures(
+                validator=self._final_state_validator,
+                state=state,
+                slots=self._slots,
+            )
+            pending = []
             for event, retry_slot in slot_failure_events(
-                pending=pending,
+                pending=self._slots,
                 attempts=attempts,
                 outcome=outcome,
                 state=state,
@@ -73,10 +92,10 @@ class SlotFlight:
             ):
                 yield event
                 if retry_slot is not None:
-                    next_pending.append(retry_slot)
-            pending = next_pending
+                    pending.append(retry_slot)
+            if not pending:
+                break
 
-        _ensure_repeatable_arrays(state, self._slots)
         final_state = apply_final_state_validator(self._final_state_validator, state)
         yield {"type": "done", "state": snapshot_state(final_state)}
 
@@ -148,3 +167,45 @@ def _ensure_repeatable_arrays(
     for path in array_paths:
         if not has_path_value(state, path):
             set_path_value(state, path, [])
+
+
+def _repeat_validation_failures(
+    *,
+    validator: Any | None,
+    state: dict[str, Any],
+    slots: list[CompiledSlot],
+) -> SlotAttemptOutcome:
+    outcome = SlotAttemptOutcome(completed=set(), failures={})
+    if validator is None:
+        return outcome
+
+    try:
+        apply_final_state_validator(validator, state)
+        return outcome
+    except Exception as error:  # noqa: BLE001
+        errors = getattr(error, "errors", None)
+        if not callable(errors):
+            return outcome
+        for issue in errors():
+            loc = issue.get("loc") if isinstance(issue, dict) else None
+            if loc is None:
+                continue
+            for slot in slots:
+                if slot.repeat != "none" and _issue_targets_repeat_slot(loc, slot):
+                    outcome.failures.setdefault(slot.path, error)
+        return outcome
+
+
+def _issue_targets_repeat_slot(loc: Any, slot: CompiledSlot) -> bool:
+    if slot.array_path is None:
+        return False
+
+    template_path = ".".join(
+        "[]" if isinstance(segment, int) else str(segment) for segment in loc
+    ).replace(".[]", "[]")
+
+    return template_path in {
+        slot.path,
+        slot.array_path,
+        f"{slot.array_path}[]",
+    }

@@ -1,5 +1,7 @@
 import unittest
 
+from pydantic import BaseModel, Field
+
 from slot_flight import SlotDefinition, SlotFlight
 
 
@@ -131,6 +133,45 @@ class SlotFlightTest(unittest.IsolatedAsyncioTestCase):
             {"type": "done", "state": {"tags": ["new-first", "new-second"]}},
         )
 
+    async def test_retries_repeatable_field_when_final_array_validation_fails(self):
+        class TagsModel(BaseModel):
+            tags: list[str] = Field(min_length=2)
+
+        requests = []
+
+        async def generate(request):
+            requests.append([f"{slot.path}:{slot.attempt}" for slot in request.slots])
+            slot = request.slots[0]
+            yield f"<{slot.id}:0>first\n</{slot.id}:0>"
+            if slot.attempt == 2:
+                yield f"<{slot.id}:1>second\n</{slot.id}:1>"
+
+        events = await collect_events(
+            SlotFlight(
+                slots=[
+                    SlotDefinition(
+                        "tags[]",
+                        validate=_non_empty_string,
+                    )
+                ],
+                generate=generate,
+                max_retries=1,
+                validate_final=TagsModel,
+            )
+        )
+
+        self.assertEqual(requests, [["tags[]:1"], ["tags[]:2"]])
+        self.assertTrue(
+            any(
+                event["type"] == "slot-retry" and event["slot"] == "tags[]"
+                for event in events
+            )
+        )
+        self.assertEqual(
+            events[-1],
+            {"type": "done", "state": TagsModel(tags=["first", "second"])},
+        )
+
     async def test_retries_only_failed_object_array_field_sequence(self):
         requests = []
 
@@ -188,6 +229,73 @@ class SlotFlightTest(unittest.IsolatedAsyncioTestCase):
                         {"heading": "Details", "body": "New detail"},
                     ]
                 },
+            },
+        )
+
+    async def test_retries_missing_object_array_field_from_final_validation(self):
+        class Section(BaseModel):
+            heading: str
+            body: str
+
+        class Article(BaseModel):
+            sections: list[Section] = Field(min_length=2)
+
+        requests = []
+
+        async def generate(request):
+            requests.append([f"{slot.path}:{slot.attempt}" for slot in request.slots])
+            heading = next(
+                (slot for slot in request.slots if slot.path == "sections[].heading"),
+                None,
+            )
+            body = next(
+                (slot for slot in request.slots if slot.path == "sections[].body"),
+                None,
+            )
+
+            if heading is not None:
+                yield f"<{heading.id}:0>Intro\n</{heading.id}:0>"
+                yield f"<{heading.id}:1>Details\n</{heading.id}:1>"
+            if body is not None:
+                yield f"<{body.id}:0>Opening\n</{body.id}:0>"
+                if body.attempt == 2:
+                    yield f"<{body.id}:1>More detail\n</{body.id}:1>"
+
+        events = await collect_events(
+            SlotFlight(
+                slots=[
+                    SlotDefinition(
+                        "sections[].heading",
+                        validate=_non_empty_string,
+                    ),
+                    SlotDefinition(
+                        "sections[].body",
+                        validate=_non_empty_string,
+                    ),
+                ],
+                generate=generate,
+                max_retries=1,
+                validate_final=Article,
+            )
+        )
+
+        self.assertEqual(
+            requests,
+            [
+                ["sections[].heading:1", "sections[].body:1"],
+                ["sections[].body:2"],
+            ],
+        )
+        self.assertEqual(
+            events[-1],
+            {
+                "type": "done",
+                "state": Article(
+                    sections=[
+                        Section(heading="Intro", body="Opening"),
+                        Section(heading="Details", body="More detail"),
+                    ]
+                ),
             },
         )
 

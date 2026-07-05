@@ -1,4 +1,6 @@
 import type { z } from "zod";
+import { SlotFlightValidationError } from "./errors.js";
+import type { PendingFailure } from "./slot/execution/types.js";
 import {
   type CompiledSlot,
   compileSlotPlan,
@@ -48,7 +50,9 @@ export class SlotFlight<TSchema extends z.ZodTypeAny> {
       prompt: this.prompt,
       maxRetries: this.maxRetries,
       signal: options.signal,
-      cloneState: cloneJson
+      cloneState: cloneJson,
+      validateRepeatState: ({ state: currentState, slots, attempts }) =>
+        this.repeatValidationFailures(currentState, slots, attempts)
     })) {
       yield event;
     }
@@ -62,12 +66,66 @@ export class SlotFlight<TSchema extends z.ZodTypeAny> {
 
     return { state: parsed };
   }
+
+  private repeatValidationFailures(
+    state: unknown,
+    slots: CompiledSlot[],
+    attempts: ReadonlyMap<string, number>
+  ): Map<string, PendingFailure> {
+    const result = this.schema.safeParse(state);
+    if (result.success) {
+      return new Map();
+    }
+
+    const issuesBySlot = new Map<CompiledSlot, z.ZodIssue[]>();
+    const repeatSlots = slots.filter((slot) => slot.repeat !== "none");
+    for (const issue of result.error.issues) {
+      for (const slot of repeatSlots) {
+        if (issueTargetsRepeatSlot(issue.path, slot)) {
+          const issues = issuesBySlot.get(slot) ?? [];
+          issues.push(issue);
+          issuesBySlot.set(slot, issues);
+        }
+      }
+    }
+
+    const failures = new Map<string, PendingFailure>();
+    for (const [slot, issues] of issuesBySlot) {
+      failures.set(slot.path, {
+        slot,
+        attempt: attempts.get(slot.path) ?? 1,
+        error: new SlotFlightValidationError(slot.path, issues),
+        retryable: true
+      });
+    }
+    return failures;
+  }
 }
 
 export function slotFlight<TSchema extends z.ZodTypeAny>(
   options: SlotFlightOptions<TSchema>
 ): SlotFlight<TSchema> {
   return new SlotFlight(options);
+}
+
+function issueTargetsRepeatSlot(
+  issuePath: (string | number)[],
+  slot: CompiledSlot
+): boolean {
+  if (slot.arrayPath === undefined) {
+    return false;
+  }
+
+  const templatePath = issuePath
+    .map((segment) => (typeof segment === "number" ? "[]" : String(segment)))
+    .join(".")
+    .replaceAll(".[]", "[]");
+
+  return (
+    templatePath === slot.path ||
+    templatePath === slot.arrayPath ||
+    templatePath === `${slot.arrayPath}[]`
+  );
 }
 
 function cloneJson<T>(value: T): T {
