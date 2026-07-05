@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "slot-flight"
-version = "0.1.1"
+version = "0.2.0"
 description = "Slot-wise LLM generation and server-owned JSON assembly for Python."
 readme = "README.md"
 requires-python = ">=3.10"
