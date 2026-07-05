@@ -39,6 +39,11 @@ for await (const slot of stream.completedSlotStream) {
 const finalObject = await stream.finalObject;
 ```
 
+Objects and arrays are expanded into structural slots such as
+`metadata.audience`, `tags[]`, and `sections[].heading`; the model emits raw
+slot values in indexed repeat frames such as `<2:0>...</2:0>`, while the engine
+maps those indexes to JSON paths and owns final assembly.
+
 `streamSlotObject()` exposes one live model run through several views:
 
 - `completedSlotStream`: validated slot values, one event per completed slot.

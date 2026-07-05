@@ -7,33 +7,42 @@ from typing import Literal
 from .errors import SlotFlightSlotProtocolError
 
 _PROTOCOL_ERROR_PREVIEW_LENGTH = 160
-_HEADER_PATTERN = re.compile(r"^<(?P<id>\d+)>")
-_PARTIAL_HEADER_PATTERN = re.compile(r"^<\d*$")
+_HEADER_PATTERN = re.compile(r"^<(?P<id>\d+)(?::(?P<index>\d+))?>")
+_PARTIAL_ID_HEADER_PATTERN = re.compile(r"^<\d*$")
+_PARTIAL_INDEXED_HEADER_PATTERN = re.compile(r"^<(?P<id>\d+):\d*$")
 
 
 @dataclass(frozen=True)
 class SlotFrameParserEvent:
     type: Literal["slot-start", "slot-delta", "slot-complete"]
     slot: str
+    index: int | None = None
     delta: str = ""
     value: str = ""
 
 
 @dataclass
 class _CurrentFrame:
-    id: str
+    tag: str
     path: str
+    index: int | None = None
     value: str = ""
     allows_immediate_closing: bool = False
 
 
 class SlotFrameParser:
-    def __init__(self, slots_by_id: dict[str, str]):
+    def __init__(
+        self,
+        slots_by_id: dict[str, str],
+        repeatable_slots: set[str] | None = None,
+    ):
         self._slots_by_id = slots_by_id
+        self._repeatable_slots = repeatable_slots or set()
         self._state: Literal["headers", "value"] = "headers"
         self._buffer = ""
         self._current: _CurrentFrame | None = None
         self._completed: set[str] = set()
+        self._next_repeat_indexes: dict[str, int] = {}
         self._max_slot_id_digits = max(1, *(len(slot_id) for slot_id in slots_by_id))
 
     def push(self, chunk: str) -> list[SlotFrameParserEvent]:
@@ -57,27 +66,60 @@ class SlotFrameParser:
                     )
 
                 slot_id = header_match.group("id")
+                raw_index = header_match.group("index")
+                frame_index = int(raw_index) if raw_index is not None else None
                 path = self._slots_by_id.get(slot_id)
                 if path is None:
                     raise SlotFlightSlotProtocolError(
                         f'Received unregistered slot id "{slot_id}".',
                         False,
                     )
-                if path in self._completed:
+
+                repeatable = path in self._repeatable_slots
+                if frame_index is not None and not repeatable:
                     raise SlotFlightSlotProtocolError(
-                        f'Received duplicate slot "{path}".',
+                        f'Received indexed frame for fixed slot "{path}".',
+                        True,
+                    )
+                if frame_index is None and repeatable:
+                    raise SlotFlightSlotProtocolError(
+                        f'Repeatable slot "{path}" must use indexed tags '
+                        f"like <{slot_id}:0>.",
+                        True,
+                    )
+                if frame_index is not None:
+                    expected_index = self._next_repeat_indexes.get(path, 0)
+                    if frame_index != expected_index:
+                        raise SlotFlightSlotProtocolError(
+                            f'Expected repeat index {expected_index} for slot '
+                            f'"{path}" but received {frame_index}.',
+                            True,
+                        )
+
+                completed_key = _frame_key(path, frame_index)
+                if completed_key in self._completed:
+                    raise SlotFlightSlotProtocolError(
+                        f'Received duplicate slot "{completed_key}".',
                         False,
                     )
 
+                tag = header_match.group(0)[1:-1]
                 self._current = _CurrentFrame(
-                    id=slot_id,
+                    tag=tag,
                     path=path,
+                    index=frame_index,
                     allows_immediate_closing=self._consume_opening_line_break(
                         len(header_match.group(0))
                     ),
                 )
                 self._state = "value"
-                events.append(SlotFrameParserEvent(type="slot-start", slot=path))
+                events.append(
+                    SlotFrameParserEvent(
+                        type="slot-start",
+                        slot=path,
+                        index=frame_index,
+                    )
+                )
 
             if self._state == "value":
                 frame_events, completed_frame = self._flush_value()
@@ -104,7 +146,7 @@ class SlotFrameParser:
             return [], False
 
         events: list[SlotFrameParserEvent] = []
-        closing = f"</{self._current.id}>"
+        closing = f"</{self._current.tag}>"
         closing_index = _find_line_delimited_closing(
             self._buffer,
             closing,
@@ -119,6 +161,7 @@ class SlotFrameParser:
                     SlotFrameParserEvent(
                         type="slot-delta",
                         slot=self._current.path,
+                        index=self._current.index,
                         delta=delta,
                         value=self._current.value,
                     )
@@ -127,10 +170,15 @@ class SlotFrameParser:
                 SlotFrameParserEvent(
                     type="slot-complete",
                     slot=self._current.path,
+                    index=self._current.index,
                     value=self._current.value,
                 )
             )
-            self._completed.add(self._current.path)
+            self._completed.add(_frame_key(self._current.path, self._current.index))
+            if self._current.index is not None:
+                self._next_repeat_indexes[self._current.path] = (
+                    self._current.index + 1
+                )
             self._buffer = self._buffer[closing_index + len(closing) :]
             self._current = None
             self._state = "headers"
@@ -147,6 +195,7 @@ class SlotFrameParser:
             SlotFrameParserEvent(
                 type="slot-delta",
                 slot=self._current.path,
+                index=self._current.index,
                 delta=delta,
                 value=self._current.value,
             )
@@ -162,9 +211,17 @@ class SlotFrameParser:
             )
 
     def _might_be_partial_header(self) -> bool:
-        return (
+        if (
             len(self._buffer) <= self._max_slot_id_digits + 1
-            and _PARTIAL_HEADER_PATTERN.match(self._buffer) is not None
+            and _PARTIAL_ID_HEADER_PATTERN.match(self._buffer) is not None
+        ):
+            return True
+
+        indexed = _PARTIAL_INDEXED_HEADER_PATTERN.match(self._buffer)
+        return (
+            indexed is not None
+            and len(indexed.group("id")) <= self._max_slot_id_digits
+            and indexed.group("id") in self._slots_by_id
         )
 
     def _header_preview(self) -> str:
@@ -180,6 +237,10 @@ class SlotFrameParser:
             self._buffer = self._buffer[1:]
             return True
         return False
+
+
+def _frame_key(path: str, index: int | None) -> str:
+    return path if index is None else f"{path}:{index}"
 
 
 def _strip_one_trailing_line_break(value: str) -> str:

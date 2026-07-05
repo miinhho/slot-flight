@@ -75,6 +75,62 @@ describe("SlotFrameParser", () => {
     });
   });
 
+  it("extracts indexed repeat slot frames", () => {
+    const parser = new SlotFrameParser(
+      new Map([["1", "tags[]"]]),
+      new Set(["tags[]"])
+    );
+
+    const events = [
+      ...parser.push("<1:0>billing\n</1:0>"),
+      ...parser.push("<1:1>latency\n</1:1>")
+    ];
+    parser.finish();
+
+    expect(events).toContainEqual({
+      type: "slot-complete",
+      slot: "tags[]",
+      index: 0,
+      value: "billing"
+    });
+    expect(events).toContainEqual({
+      type: "slot-complete",
+      slot: "tags[]",
+      index: 1,
+      value: "latency"
+    });
+  });
+
+  it("rejects repeat slot frames without an index", () => {
+    const parser = new SlotFrameParser(
+      new Map([["1", "tags[]"]]),
+      new Set(["tags[]"])
+    );
+
+    expect(() => parser.push("<1>billing\n</1>")).toThrow(
+      'Repeatable slot "tags[]" must use indexed tags like <1:0>.'
+    );
+  });
+
+  it("rejects indexed frames for fixed slots", () => {
+    const parser = new SlotFrameParser(new Map([["1", "name"]]));
+
+    expect(() => parser.push("<1:0>Alice\n</1:0>")).toThrow(
+      'Received indexed frame for fixed slot "name".'
+    );
+  });
+
+  it("rejects skipped repeat indexes", () => {
+    const parser = new SlotFrameParser(
+      new Map([["1", "tags[]"]]),
+      new Set(["tags[]"])
+    );
+
+    expect(() => parser.push("<1:1>latency\n</1:1>")).toThrow(
+      'Expected repeat index 0 for slot "tags[]" but received 1.'
+    );
+  });
+
   it("preserves tag-like text inside a value", () => {
     const parser = new SlotFrameParser(new Map([["1", "name"]]));
 

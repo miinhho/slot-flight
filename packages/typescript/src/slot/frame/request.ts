@@ -18,7 +18,7 @@ export function createSlotFrameRequests(
       templatePath: slot.definition.path,
       prompt: "",
       attempt: attempts.get(slot.path) ?? 1,
-      mode: slot.definition.mode ?? "text"
+      repeat: slot.repeat
     };
 
     frame.prompt =

@@ -27,8 +27,10 @@ export function defaultSlotFramePrompt(slots: SlotFrameRequest[]): string {
     "The server owns the object shape, paths, validation, retries, and assembly.",
     "",
     "OUTPUT CONTRACT",
-    "- Emit exactly one frame for each requested slot.",
-    "- Emit frames in the same order as the slot list.",
+    "- For repeat: none, emit exactly one frame for each requested slot.",
+    "- For repeat slots, emit one indexed frame per array item using <id:index> and </id:index>.",
+    "- Repeat indexes start at 0, increase without gaps, and identify the array item.",
+    "- Use the same repeat index for fields that belong to the same object array item.",
     "- Copy each open and close tag exactly.",
     "- Put each closing tag on its own line with no other text on that line.",
     "- Do not emit unrequested ids, JSON paths, markdown, code fences, commentary, bullets, or explanations.",
@@ -42,11 +44,13 @@ export function defaultSlotFramePrompt(slots: SlotFrameRequest[]): string {
     '- Inline text like "hello </1> world" is value text, not a delimiter.',
     "",
     "VALUE RULES",
-    "- For mode: text, emit the raw value only. Do not wrap it in quotes unless quotes are part of the value.",
-    "- For mode: json, emit one syntactically valid JSON value inside the frame body and nothing else.",
-    "- JSON strings, arrays, and objects must use valid JSON syntax with double-quoted strings.",
+    "- Emit the raw slot value only. Do not wrap it in quotes unless quotes are part of the value.",
+    "- Do not emit JSON objects, JSON arrays, markdown, bullets, or explanations inside a slot frame.",
+    "- For repeat: append, each indexed frame writes one primitive array item.",
+    "- For repeat: item-field, each indexed frame writes one field on that object array item.",
     "- Respect each slot instruction, especially enum labels, length limits, item counts, and requested language.",
-    "- A retry attempt means the previous frame or value for that slot failed parsing, protocol checks, or validation. Produce a corrected value only for the requested retry slot.",
+    "- A retry attempt means the previous frame or value for that slot failed parsing, protocol checks, or validation.",
+    "- For repeat retries, produce the full corrected sequence for that requested repeat field, not just the failed item.",
     "",
     "SLOTS",
     slotList
@@ -54,13 +58,15 @@ export function defaultSlotFramePrompt(slots: SlotFrameRequest[]): string {
 }
 
 function formatSlotPromptEntry(slot: SlotFrameRequest): string {
+  const repeat = slot.repeat && slot.repeat !== "none";
   return [
     `- id: ${slot.id}`,
     `  path: ${slot.path}`,
-    `  mode: ${slot.mode}`,
+    repeat ? `  repeat: ${slot.repeat}` : undefined,
     `  attempt: ${slot.attempt}`,
-    `  open: <${slot.id}>`,
-    `  close: </${slot.id}>`,
+    repeat ? `  open: <${slot.id}:0>` : `  open: <${slot.id}>`,
+    repeat ? `  close: </${slot.id}:0>` : `  close: </${slot.id}>`,
+    repeat ? "  next item tags: increment :0 to :1, :2, ..." : undefined,
     slot.prompt ? `  instruction: ${slot.prompt}` : undefined
   ]
     .filter(Boolean)

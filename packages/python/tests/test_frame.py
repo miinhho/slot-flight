@@ -62,6 +62,51 @@ class SlotFrameParserTest(unittest.TestCase):
             [(event.type, event.slot, event.value) for event in events],
         )
 
+    def test_extracts_indexed_repeat_slot_frames(self):
+        parser = SlotFrameParser({"1": "tags[]"}, {"tags[]"})
+
+        events = [
+            *parser.push("<1:0>billing\n</1:0>"),
+            *parser.push("<1:1>latency\n</1:1>"),
+        ]
+        parser.finish()
+
+        self.assertIn(
+            ("slot-complete", "tags[]", 0, "billing"),
+            [(event.type, event.slot, event.index, event.value) for event in events],
+        )
+        self.assertIn(
+            ("slot-complete", "tags[]", 1, "latency"),
+            [(event.type, event.slot, event.index, event.value) for event in events],
+        )
+
+    def test_rejects_repeat_slot_frames_without_an_index(self):
+        parser = SlotFrameParser({"1": "tags[]"}, {"tags[]"})
+
+        with self.assertRaisesRegex(
+            Exception,
+            'Repeatable slot "tags\\[\\]" must use indexed tags like <1:0>.',
+        ):
+            parser.push("<1>billing\n</1>")
+
+    def test_rejects_indexed_frames_for_fixed_slots(self):
+        parser = SlotFrameParser({"1": "name"})
+
+        with self.assertRaisesRegex(
+            Exception,
+            'Received indexed frame for fixed slot "name".',
+        ):
+            parser.push("<1:0>Alice\n</1:0>")
+
+    def test_rejects_skipped_repeat_indexes(self):
+        parser = SlotFrameParser({"1": "tags[]"}, {"tags[]"})
+
+        with self.assertRaisesRegex(
+            Exception,
+            'Expected repeat index 0 for slot "tags\\[\\]" but received 1.',
+        ):
+            parser.push("<1:1>latency\n</1:1>")
+
     def test_preserves_tag_like_text_inside_a_value(self):
         parser = SlotFrameParser({"1": "name"})
 

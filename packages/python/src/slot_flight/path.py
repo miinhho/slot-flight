@@ -34,6 +34,35 @@ def expand_slot_path(path: str, count: int | None = None) -> list[str]:
     return concrete_paths
 
 
+def count_array_wildcards(path: str) -> int:
+    return sum(1 for token in _parse_template(path) if token == "[]")
+
+
+def is_append_template_path(path: str) -> bool:
+    return _parse_template(path)[-1] == "[]"
+
+
+def array_wildcard_path(path: str) -> str:
+    wildcard_index = path.find("[]")
+    if wildcard_index == -1:
+        raise SlotFlightConfigurationError(
+            f'Slot path "{path}" does not contain an array wildcard.'
+        )
+    return path[:wildcard_index]
+
+
+def concrete_path_for_array_item(path: str, index: int) -> str:
+    if not isinstance(index, int) or index < 0:
+        raise SlotFlightConfigurationError(
+            "Array item index must be a non-negative integer."
+        )
+    if count_array_wildcards(path) != 1:
+        raise SlotFlightConfigurationError(
+            f'Slot path "{path}" must contain exactly one [] wildcard.'
+        )
+    return path.replace("[]", f"[{index}]", 1)
+
+
 def set_path_value(target: dict[str, Any], path: str, value: Any) -> None:
     tokens = parse_concrete_path(path)
     current: Any = target
@@ -71,6 +100,60 @@ def set_path_value(target: dict[str, Any], path: str, value: Any) -> None:
         current = current[array_index]
 
     raise SlotFlightConfigurationError(f'Cannot set value for path "{path}".')
+
+
+def clear_template_path_values(target: dict[str, Any], path: str) -> None:
+    tokens = _parse_template(path)
+    wildcard_count = sum(1 for token in tokens if token == "[]")
+    if wildcard_count != 1:
+        raise SlotFlightConfigurationError(
+            f'Slot path "{path}" must contain exactly one [] wildcard.'
+        )
+    _clear_template_tokens(target, tokens, 0)
+
+
+def has_path_value(target: dict[str, Any], path: str) -> bool:
+    tokens = parse_concrete_path(path)
+    current: Any = target
+
+    for token in tokens:
+        if token["type"] == "property":
+            key = str(token["value"])
+            if not isinstance(current, dict) or key not in current:
+                return False
+            current = current[key]
+            continue
+
+        array_index = int(token["value"])
+        if not isinstance(current, list) or array_index >= len(current):
+            return False
+        current = current[array_index]
+
+    return True
+
+
+def _clear_template_tokens(current: Any, tokens: list[str], index: int) -> None:
+    if index >= len(tokens):
+        return
+
+    token = tokens[index]
+    if token != "[]":
+        if not isinstance(current, dict) or token not in current:
+            return
+        if index == len(tokens) - 1:
+            del current[token]
+            return
+        _clear_template_tokens(current[token], tokens, index + 1)
+        return
+
+    if not isinstance(current, list):
+        return
+    if index == len(tokens) - 1:
+        current.clear()
+        return
+
+    for item in current:
+        _clear_template_tokens(item, tokens, index + 1)
 
 
 def parse_concrete_path(path: str) -> list[Token]:

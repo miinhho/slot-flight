@@ -14,9 +14,12 @@ Alice
 <2>
 Senior Engineer
 </2>
-<3>
-Builds streaming JSON assembly engines.
-</3>
+<3:0>
+streaming
+</3:0>
+<3:1>
+json assembly
+</3:1>
 ```
 
 ## Repository Layout
@@ -119,7 +122,7 @@ from slot_flight.adapters.openai import stream_slot_object
 
 class Triage(BaseModel):
     summary: str = Field(description="Write one concise operational summary.")
-    tags: list[str] = Field(description="Write a JSON array of exactly 3 tags.")
+    tags: list[str] = Field(description="Write exactly 3 tags, one per frame.")
 
 
 stream = stream_slot_object(

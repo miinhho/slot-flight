@@ -6,10 +6,6 @@ class SlotFlightConfigurationError(SlotFlightError):
     """Raised when slot definitions or paths are invalid."""
 
 
-class SlotFlightJsonParseError(SlotFlightError):
-    """Raised when a JSON-mode slot body is not valid JSON."""
-
-
 class SlotFlightSlotProtocolError(SlotFlightError):
     def __init__(self, message: str, retryable: bool):
         super().__init__(message)

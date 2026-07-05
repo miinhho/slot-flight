@@ -1,7 +1,6 @@
 import unittest
 
 from slot_flight import SlotDefinition, SlotFlight
-from slot_flight.errors import SlotFlightJsonParseError
 
 
 async def collect_events(flight):
@@ -74,22 +73,51 @@ class SlotFlightTest(unittest.IsolatedAsyncioTestCase):
             )
         )
 
-    async def test_retries_json_slot_when_body_is_invalid_json(self):
-        requests = []
-
+    async def test_appends_unknown_length_array_from_repeated_slot_frames(self):
         async def generate(request):
-            requests.append([f"{slot.path}:{slot.attempt}" for slot in request.slots])
-            for slot in request.slots:
-                value = '["billing",' if slot.attempt == 1 else '["billing","latency"]'
-                yield f"<{slot.id}>{value}\n</{slot.id}>"
+            self.assertEqual(request.slots[0].path, "tags[]")
+            self.assertEqual(request.slots[0].repeat, "append")
+            slot = request.slots[0]
+            yield f"<{slot.id}:0>billing\n</{slot.id}:0>"
+            yield f"<{slot.id}:1>latency\n</{slot.id}:1>"
 
         events = await collect_events(
             SlotFlight(
                 slots=[
                     SlotDefinition(
-                        "tags",
-                        mode="json",
-                        validate=lambda value: _list_length(value, 2),
+                        "tags[]",
+                        validate=_non_empty_string,
+                    )
+                ],
+                generate=generate,
+            )
+        )
+
+        self.assertEqual(
+            events[-1],
+            {"type": "done", "state": {"tags": ["billing", "latency"]}},
+        )
+
+    async def test_retries_repeatable_field_as_full_sequence(self):
+        requests = []
+
+        async def generate(request):
+            requests.append([f"{slot.path}:{slot.attempt}" for slot in request.slots])
+            slot = request.slots[0]
+            if slot.attempt == 1:
+                yield f"<{slot.id}:0>old-first\n</{slot.id}:0>"
+                yield f"<{slot.id}:1>\n</{slot.id}:1>"
+                yield f"<{slot.id}:2>stale-third\n</{slot.id}:2>"
+                return
+            yield f"<{slot.id}:0>new-first\n</{slot.id}:0>"
+            yield f"<{slot.id}:1>new-second\n</{slot.id}:1>"
+
+        events = await collect_events(
+            SlotFlight(
+                slots=[
+                    SlotDefinition(
+                        "tags[]",
+                        validate=_non_empty_string,
                     )
                 ],
                 generate=generate,
@@ -97,9 +125,71 @@ class SlotFlightTest(unittest.IsolatedAsyncioTestCase):
             )
         )
 
-        self.assertEqual(requests, [["tags:1"], ["tags:2"]])
-        retry = next(event for event in events if event["type"] == "slot-retry")
-        self.assertIsInstance(retry["error"], SlotFlightJsonParseError)
+        self.assertEqual(requests, [["tags[]:1"], ["tags[]:2"]])
+        self.assertEqual(
+            events[-1],
+            {"type": "done", "state": {"tags": ["new-first", "new-second"]}},
+        )
+
+    async def test_retries_only_failed_object_array_field_sequence(self):
+        requests = []
+
+        async def generate(request):
+            requests.append([f"{slot.path}:{slot.attempt}" for slot in request.slots])
+            heading = next(
+                (slot for slot in request.slots if slot.path == "sections[].heading"),
+                None,
+            )
+            body = next(
+                (slot for slot in request.slots if slot.path == "sections[].body"),
+                None,
+            )
+
+            if heading is not None and body is not None and body.attempt == 1:
+                yield f"<{body.id}:0>Old opening\n</{body.id}:0>"
+                yield f"<{heading.id}:0>Intro\n</{heading.id}:0>"
+                yield f"<{heading.id}:1>Details\n</{heading.id}:1>"
+                yield f"<{body.id}:1>\n</{body.id}:1>"
+            if body is not None and body.attempt == 2:
+                yield f"<{body.id}:0>New opening\n</{body.id}:0>"
+                yield f"<{body.id}:1>New detail\n</{body.id}:1>"
+
+        events = await collect_events(
+            SlotFlight(
+                slots=[
+                    SlotDefinition(
+                        "sections[].heading",
+                        validate=_non_empty_string,
+                    ),
+                    SlotDefinition(
+                        "sections[].body",
+                        validate=_non_empty_string,
+                    ),
+                ],
+                generate=generate,
+                max_retries=1,
+            )
+        )
+
+        self.assertEqual(
+            requests,
+            [
+                ["sections[].heading:1", "sections[].body:1"],
+                ["sections[].body:2"],
+            ],
+        )
+        self.assertEqual(
+            events[-1],
+            {
+                "type": "done",
+                "state": {
+                    "sections": [
+                        {"heading": "Intro", "body": "New opening"},
+                        {"heading": "Details", "body": "New detail"},
+                    ]
+                },
+            },
+        )
 
     async def test_closes_source_stream_when_consumer_stops_early(self):
         source = CloseableAsyncItems(["<1>Hello"])
@@ -121,12 +211,6 @@ class SlotFlightTest(unittest.IsolatedAsyncioTestCase):
 def _non_empty_string(value):
     if not isinstance(value, str) or value == "":
         raise ValueError("expected non-empty string")
-    return value
-
-
-def _list_length(value, length):
-    if not isinstance(value, list) or len(value) != length:
-        raise ValueError(f"expected list of length {length}")
     return value
 
 

@@ -1,4 +1,5 @@
 import { SlotFlightSlotProtocolError } from "../../errors.js";
+import { clearTemplatePathValues } from "../path.js";
 import type { CompiledSlot } from "../plan.js";
 import type { PendingFailure, SlotExecutionEvent } from "./types.js";
 
@@ -11,6 +12,9 @@ export function recordMissingSlots(
   // Missing frames are slot failures, not whole-run failures. This keeps retry
   // scoped to the smallest unit the engine can safely regenerate.
   for (const slot of slots) {
+    if (slot.repeat !== "none") {
+      continue;
+    }
     if (!completed.has(slot.path) && !failures.has(slot.path)) {
       failures.set(slot.path, {
         slot,
@@ -68,6 +72,9 @@ export async function* nextPendingSlots({
   for (const failure of failures.values()) {
     const maxAttempts = (failure.slot.definition.maxRetries ?? maxRetries) + 1;
     if (failure.retryable && failure.attempt < maxAttempts) {
+      if (failure.slot.repeat !== "none") {
+        clearTemplatePathValues(state, failure.slot.path);
+      }
       yield {
         type: "slot-retry",
         slot: failure.slot.path,

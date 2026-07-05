@@ -4,6 +4,7 @@ import {
   compileSlotPlan,
   runSlotFrameStream
 } from "./slot/index.js";
+import { hasPathValue, setPathValue } from "./slot/path.js";
 import type {
   SlotFlightEvent,
   SlotFlightOptions,
@@ -15,7 +16,6 @@ import type {
 export {
   SlotFlightConfigurationError,
   SlotFlightError,
-  SlotFlightJsonParseError,
   SlotFlightSlotProtocolError,
   SlotFlightStreamError,
   SlotFlightValidationError
@@ -53,6 +53,7 @@ export class SlotFlight<TSchema extends z.ZodTypeAny> {
       yield event;
     }
 
+    ensureRepeatableArrays(state, this.slots);
     const parsed = this.schema.parse(state);
     yield {
       type: "done",
@@ -71,4 +72,21 @@ export function slotFlight<TSchema extends z.ZodTypeAny>(
 
 function cloneJson<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
+}
+
+function ensureRepeatableArrays(
+  state: unknown,
+  slots: readonly CompiledSlot[]
+) {
+  const arrayPaths = new Set(
+    slots
+      .filter((slot) => slot.repeat !== "none" && slot.arrayPath !== undefined)
+      .map((slot) => slot.arrayPath as string)
+  );
+
+  for (const path of arrayPaths) {
+    if (!hasPathValue(state, path)) {
+      setPathValue(state, path, []);
+    }
+  }
 }

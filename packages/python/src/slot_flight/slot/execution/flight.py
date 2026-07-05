@@ -6,6 +6,7 @@ from typing import Any, cast
 from ..._streams import close_stream, iterate_stream
 from ...errors import SlotFlightSlotProtocolError, SlotFlightStreamError
 from ...frame import SlotFrameParser
+from ...path import has_path_value, set_path_value
 from ...types import Prompt, SlotDefinition, SlotFlightRequest, SlotGenerator
 from .events import apply_frame_event_to_state
 from .failures import (
@@ -13,6 +14,7 @@ from .failures import (
     mark_protocol_failure_for_unfinished_slots,
     slot_failure_events,
 )
+from .paths import SlotPathResolver
 from .request import build_slot_flight_request, compile_slot_plan
 from .state import snapshot_state
 from .types import CompiledSlot, SlotAttemptOutcome
@@ -74,6 +76,7 @@ class SlotFlight:
                     next_pending.append(retry_slot)
             pending = next_pending
 
+        _ensure_repeatable_arrays(state, self._slots)
         final_state = apply_final_state_validator(self._final_state_validator, state)
         yield {"type": "done", "state": snapshot_state(final_state)}
 
@@ -86,8 +89,12 @@ class SlotFlight:
         state: dict[str, Any],
         outcome: SlotAttemptOutcome,
     ):
-        parser = SlotFrameParser({slot.id: slot.path for slot in request.slots})
+        parser = SlotFrameParser(
+            {slot.id: slot.path for slot in request.slots},
+            {slot.path for slot in pending if slot.repeat != "none"},
+        )
         slots_by_path = {slot.path: slot for slot in pending}
+        paths = SlotPathResolver()
 
         try:
             chunks = await self._open_chunk_stream(request)
@@ -99,6 +106,7 @@ class SlotFlight:
                             frame_event=frame_event,
                             slots_by_path=slots_by_path,
                             attempts=attempts,
+                            paths=paths,
                             state=state,
                             outcome=outcome,
                         )
@@ -126,3 +134,17 @@ class SlotFlight:
 
 def slot_flight(**options: Any) -> SlotFlight:
     return SlotFlight(**options)
+
+
+def _ensure_repeatable_arrays(
+    state: dict[str, Any],
+    slots: list[CompiledSlot],
+) -> None:
+    array_paths = {
+        slot.array_path
+        for slot in slots
+        if slot.repeat != "none" and slot.array_path is not None
+    }
+    for path in array_paths:
+        if not has_path_value(state, path):
+            set_path_value(state, path, [])

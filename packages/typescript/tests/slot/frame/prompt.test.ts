@@ -4,11 +4,12 @@ import { createSlotFramePrompt } from "../../../src/slot/frame/prompt.js";
 import { createSlotFrameRequests } from "../../../src/slot/frame/request.js";
 
 describe("slot frame prompt", () => {
-  it("describes a structured slot-frame contract for text and JSON slots", () => {
+  it("includes repeat metadata without reintroducing slot modes", () => {
     const slots = createSlotFrameRequests(
       [
         {
           path: "summary",
+          repeat: "none",
           definition: {
             path: "summary",
             schema: z.string(),
@@ -16,46 +17,35 @@ describe("slot frame prompt", () => {
           }
         },
         {
-          path: "tags",
+          path: "tags[]",
+          repeat: "append",
+          arrayPath: "tags",
           definition: {
-            path: "tags",
-            schema: z.array(z.string()).length(3),
-            mode: "json",
+            path: "tags[]",
+            schema: z.string(),
             prompt: "Write exactly 3 short tags."
           }
         }
       ],
       new Map([
         ["summary", 1],
-        ["tags", 2]
+        ["tags[]", 2]
       ])
     );
 
     const prompt = createSlotFramePrompt(slots, undefined);
 
-    expect(prompt).toContain("OUTPUT CONTRACT");
-    expect(prompt).toContain("Do not emit JSON.");
-    expect(prompt).toContain("The server owns the object shape");
-    expect(prompt).toContain("- id: 1");
-    expect(prompt).toContain("  path: summary");
-    expect(prompt).toContain("  mode: text");
-    expect(prompt).toContain("  attempt: 1");
-    expect(prompt).toContain("  open: <1>");
-    expect(prompt).toContain("  close: </1>");
-    expect(prompt).toContain("Put each closing tag on its own line");
-    expect(prompt).toContain("raw slot value only");
-    expect(prompt).toContain(
-      "only treats a closing tag as a delimiter when it is the whole line"
-    );
-    expect(prompt).toContain("Write one concise operational summary.");
-    expect(prompt).toContain("- id: 2");
-    expect(prompt).toContain("  path: tags");
-    expect(prompt).toContain("  mode: json");
-    expect(prompt).toContain("  attempt: 2");
-    expect(prompt).toContain("one syntactically valid JSON value");
-    expect(prompt).toContain(
-      "A retry attempt means the previous frame or value"
-    );
+    expect(slots[1]).toMatchObject({
+      path: "tags[]",
+      repeat: "append"
+    });
+    expect(prompt).toContain("  repeat: append");
+    expect(prompt).toContain("  open: <2:0>");
+    expect(prompt).toContain("  close: </2:0>");
+    expect(prompt).toContain("Use the same repeat index");
+    expect(prompt).toContain("Do not emit JSON objects, JSON arrays");
+    expect(prompt).not.toContain("mode:");
+    expect(prompt).not.toContain("mode: json");
   });
 
   it("lets callers replace the default prompt completely", () => {
@@ -63,6 +53,7 @@ describe("slot frame prompt", () => {
       [
         {
           path: "name",
+          repeat: "none",
           definition: {
             path: "name",
             schema: z.string()

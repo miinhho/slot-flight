@@ -29,16 +29,6 @@ export class SlotFlightSlotProtocolError extends SlotFlightError {
   }
 }
 
-export class SlotFlightJsonParseError extends SlotFlightError {
-  constructor(
-    readonly path: string,
-    reason: string
-  ) {
-    super(`Slot "${path}" did not emit valid JSON: ${reason}`);
-    this.name = "SlotFlightJsonParseError";
-  }
-}
-
 export class SlotFlightStreamError extends SlotFlightError {
   constructor(message: string) {
     super(message);

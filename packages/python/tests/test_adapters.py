@@ -15,7 +15,7 @@ from slot_flight.adapters.openai_compatible import (
 
 class Summary(BaseModel):
     title: str = Field(description="Write a short title.")
-    tags: list[str] = Field(description="Write a JSON array of two tags.")
+    tags: list[str] = Field(description="Write two tags, one tag per frame.")
 
 
 class AdapterTest(unittest.IsolatedAsyncioTestCase):
@@ -23,7 +23,11 @@ class AdapterTest(unittest.IsolatedAsyncioTestCase):
         client = FakeOpenAIClient(
             [
                 {"choices": [{"delta": {"content": "<1>Hello\n</1>"}}]},
-                {"choices": [{"delta": {"content": '<2>["a","b"]\n</2>'}}]},
+                {
+                    "choices": [
+                        {"delta": {"content": "<2:0>a\n</2:0>\n<2:1>b\n</2:1>"}}
+                    ]
+                },
             ]
         )
 
@@ -69,7 +73,7 @@ class AdapterTest(unittest.IsolatedAsyncioTestCase):
             CloseableIterator(
                 [
                     _openai_chunk("<1>Hello\n</1>"),
-                    _openai_chunk('<2>["a","b"]\n</2>'),
+                    _openai_chunk("<2:0>a\n</2:0>\n<2:1>b\n</2:1>"),
                 ]
             )
         )
@@ -92,7 +96,7 @@ class AdapterTest(unittest.IsolatedAsyncioTestCase):
                 'data: {"choices":[{"delta":{"content":"<1>Hello\\n</1>"}}]}',
                 (
                     'data: {"choices":[{"delta":{"content":'
-                    '"<2>[\\"a\\",\\"b\\"]\\n</2>"}}]}'
+                    '"<2:0>a\\n</2:0>\\n<2:1>b\\n</2:1>"}}]}'
                 ),
                 "data: [DONE]",
             ]
@@ -135,8 +139,8 @@ class AdapterTest(unittest.IsolatedAsyncioTestCase):
                 'data: {"choices":[{"text":"<1>Hello\\n</1>"}]}',
                 (
                     'data: {"choices":[{"message":{"content":['
-                    '{"type":"text","text":"<2>[\\"a\\","},'
-                    '" \\"b\\"]\\n</2>"]}}]}'
+                    '{"type":"text","text":"<2:0>a\\n</2:0>"},'
+                    '"\\n<2:1>b\\n</2:1>"]}}]}'
                 ),
                 "data: [DONE]",
             ]
@@ -199,7 +203,7 @@ class AdapterTest(unittest.IsolatedAsyncioTestCase):
                 'data: {"choices":[{"delta":{"content":"<1>Hello\\n</1>"}}]}',
                 (
                     'data: {"choices":[{"delta":{"content":'
-                    '"<2>[\\"a\\",\\"b\\"]\\n</2>"}}]}'
+                    '"<2:0>a\\n</2:0>\\n<2:1>b\\n</2:1>"}}]}'
                 ),
                 "data: [DONE]",
             ]
@@ -228,7 +232,6 @@ class AdapterTest(unittest.IsolatedAsyncioTestCase):
         FakeHTTPXAsyncClient.reset(
             [
                 'data: {"choices":[{"delta":{"content":"<1>Hello\\n</1>"}}]}',
-                'data: {"choices":[{"delta":{"content":"<2>[]\\n</2>"}}]}',
                 "data: [DONE]",
             ]
         )
@@ -251,7 +254,9 @@ class AdapterTest(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(created.timeout)
 
     async def test_langchain_adapter_streams_slot_object(self):
-        runnable = FakeRunnable(["<1>Hello\n</1>", '<2>["a","b"]\n</2>'])
+        runnable = FakeRunnable(
+            ["<1>Hello\n</1>", "<2:0>a\n</2:0>\n<2:1>b\n</2:1>"]
+        )
 
         stream = langchain_stream(
             runnable=runnable,
@@ -268,7 +273,9 @@ class AdapterTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn("OUTPUT CONTRACT", messages[-1][1])
 
     async def test_langchain_adapter_supports_sync_stream(self):
-        runnable = FakeSyncRunnable(["<1>Hello\n</1>", '<2>["a","b"]\n</2>'])
+        runnable = FakeSyncRunnable(
+            ["<1>Hello\n</1>", "<2:0>a\n</2:0>\n<2:1>b\n</2:1>"]
+        )
 
         stream = langchain_stream(
             runnable=runnable,
@@ -289,7 +296,12 @@ class AdapterTest(unittest.IsolatedAsyncioTestCase):
                 SimpleNamespace(
                     content=[{"type": "text", "text": "<1>He"}, "llo\n</1>"]
                 ),
-                {"content": [{"type": "text", "text": '<2>["a",'}, '"b"]\n</2>']},
+                {
+                    "content": [
+                        {"type": "text", "text": "<2:0>a\n</2:0>"},
+                        "\n<2:1>b\n</2:1>",
+                    ]
+                },
             ]
         )
 

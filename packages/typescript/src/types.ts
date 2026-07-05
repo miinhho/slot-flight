@@ -53,7 +53,6 @@ export interface SlotDefinition<TValue = unknown> {
   path: string;
   prompt?: string | ((slot: SlotFrameRequest) => string);
   schema: z.ZodType<TValue>;
-  mode?: "text" | "json";
   count?: number;
   /**
    * Overrides the engine retry count for this slot only.
@@ -71,7 +70,7 @@ export interface SlotFrameRequest {
   templatePath: string;
   prompt: string;
   attempt: number;
-  mode: "text" | "json";
+  repeat?: "none" | "append" | "item-field";
 }
 
 export interface SlotFlightRequest {

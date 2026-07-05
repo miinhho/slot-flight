@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from ...errors import SlotFlightSlotProtocolError
+from ...path import clear_template_path_values
 from .state import snapshot_state
 from .types import CompiledSlot, SlotAttemptOutcome
 
@@ -22,6 +23,8 @@ def mark_missing_slots_as_failures(
     outcome: SlotAttemptOutcome,
 ) -> None:
     for slot in pending:
+        if slot.repeat != "none":
+            continue
         if slot.path not in outcome.completed and slot.path not in outcome.failures:
             outcome.failures[slot.path] = SlotFlightSlotProtocolError(
                 f'Slot "{slot.path}" was not completed by the frame stream.',
@@ -48,6 +51,8 @@ def slot_failure_events(
 
         attempt = attempts[slot.path]
         if attempt <= limit:
+            if slot.repeat != "none":
+                clear_template_path_values(state, slot.path)
             event = {
                 "type": "slot-retry",
                 "slot": slot.path,
