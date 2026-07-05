@@ -80,6 +80,20 @@ class SlotFrameParserTest(unittest.TestCase):
             [(event.type, event.slot, event.index, event.value) for event in events],
         )
 
+    def test_handles_indexed_repeat_headers_split_across_streaming_chunks(self):
+        parser = SlotFrameParser({"1": "tags[]"}, {"tags[]"})
+
+        events = [
+            *parser.push("<1:"),
+            *parser.push("0>billing\n</1:0>"),
+        ]
+        parser.finish()
+
+        self.assertIn(
+            ("slot-complete", "tags[]", 0, "billing"),
+            [(event.type, event.slot, event.index, event.value) for event in events],
+        )
+
     def test_rejects_repeat_slot_frames_without_an_index(self):
         parser = SlotFrameParser({"1": "tags[]"}, {"tags[]"})
 
@@ -106,6 +120,18 @@ class SlotFrameParserTest(unittest.TestCase):
             'Expected repeat index 0 for slot "tags\\[\\]" but received 1.',
         ):
             parser.push("<1:1>latency\n</1:1>")
+
+    def test_rejects_oversized_partial_repeat_indexes_instead_of_buffering(self):
+        parser = SlotFrameParser({"1": "tags[]"}, {"tags[]"})
+
+        with self.assertRaisesRegex(Exception, "Expected slot id header"):
+            parser.push(f"<1:{'9' * 10_000}")
+
+    def test_rejects_oversized_completed_repeat_indexes_without_int_conversion(self):
+        parser = SlotFrameParser({"1": "tags[]"}, {"tags[]"})
+
+        with self.assertRaisesRegex(Exception, "Expected repeat index 0"):
+            parser.push(f"<1:{'9' * 10_000}>value\n</1:0>")
 
     def test_preserves_tag_like_text_inside_a_value(self):
         parser = SlotFrameParser({"1": "name"})

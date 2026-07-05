@@ -9,7 +9,7 @@ from .errors import SlotFlightSlotProtocolError
 _PROTOCOL_ERROR_PREVIEW_LENGTH = 160
 _HEADER_PATTERN = re.compile(r"^<(?P<id>\d+)(?::(?P<index>\d+))?>")
 _PARTIAL_ID_HEADER_PATTERN = re.compile(r"^<\d*$")
-_PARTIAL_INDEXED_HEADER_PATTERN = re.compile(r"^<(?P<id>\d+):\d*$")
+_PARTIAL_INDEXED_HEADER_PATTERN = re.compile(r"^<(?P<id>\d+):(?P<index>\d*)$")
 
 
 @dataclass(frozen=True)
@@ -59,15 +59,16 @@ class SlotFrameParser:
                 if header_match is None:
                     if self._might_be_partial_header():
                         return events
+                    preview = self._header_preview()
+                    self._buffer = ""
                     raise SlotFlightSlotProtocolError(
                         "Expected slot id header but received "
-                        f"{_format_protocol_preview(self._header_preview())}.",
+                        f"{_format_protocol_preview(preview)}.",
                         True,
                     )
 
                 slot_id = header_match.group("id")
                 raw_index = header_match.group("index")
-                frame_index = int(raw_index) if raw_index is not None else None
                 path = self._slots_by_id.get(slot_id)
                 if path is None:
                     raise SlotFlightSlotProtocolError(
@@ -76,25 +77,22 @@ class SlotFrameParser:
                     )
 
                 repeatable = path in self._repeatable_slots
-                if frame_index is not None and not repeatable:
+                if raw_index is not None and not repeatable:
                     raise SlotFlightSlotProtocolError(
                         f'Received indexed frame for fixed slot "{path}".',
                         True,
                     )
-                if frame_index is None and repeatable:
+                if raw_index is None and repeatable:
                     raise SlotFlightSlotProtocolError(
                         f'Repeatable slot "{path}" must use indexed tags '
                         f"like <{slot_id}:0>.",
                         True,
                     )
-                if frame_index is not None:
-                    expected_index = self._next_repeat_indexes.get(path, 0)
-                    if frame_index != expected_index:
-                        raise SlotFlightSlotProtocolError(
-                            f'Expected repeat index {expected_index} for slot '
-                            f'"{path}" but received {frame_index}.',
-                            True,
-                        )
+                frame_index = (
+                    None
+                    if raw_index is None
+                    else self._parse_expected_repeat_index(path, raw_index)
+                )
 
                 completed_key = _frame_key(path, frame_index)
                 if completed_key in self._completed:
@@ -218,11 +216,30 @@ class SlotFrameParser:
             return True
 
         indexed = _PARTIAL_INDEXED_HEADER_PATTERN.match(self._buffer)
-        return (
-            indexed is not None
-            and len(indexed.group("id")) <= self._max_slot_id_digits
-            and indexed.group("id") in self._slots_by_id
-        )
+        if indexed is None:
+            return False
+
+        slot_id = indexed.group("id")
+        if len(slot_id) > self._max_slot_id_digits:
+            return False
+
+        path = self._slots_by_id.get(slot_id)
+        if path is None or path not in self._repeatable_slots:
+            return False
+
+        expected_index = str(self._next_repeat_indexes.get(path, 0))
+        return expected_index.startswith(indexed.group("index"))
+
+    def _parse_expected_repeat_index(self, path: str, raw_index: str) -> int:
+        expected_index = self._next_repeat_indexes.get(path, 0)
+        expected = str(expected_index)
+        if raw_index != expected:
+            raise SlotFlightSlotProtocolError(
+                f'Expected repeat index {expected} for slot "{path}" but received '
+                f"{_format_index_for_error(raw_index)}.",
+                True,
+            )
+        return expected_index
 
     def _header_preview(self) -> str:
         line_end = self._buffer.find("\n")
@@ -303,3 +320,9 @@ def _format_protocol_preview(value: str) -> str:
     if len(escaped) <= _PROTOCOL_ERROR_PREVIEW_LENGTH:
         return f'"{escaped}"'
     return f'"{escaped[:_PROTOCOL_ERROR_PREVIEW_LENGTH]}..." (length {len(value)})'
+
+
+def _format_index_for_error(value: str) -> str:
+    if len(value) <= _PROTOCOL_ERROR_PREVIEW_LENGTH:
+        return value
+    return f"{value[:_PROTOCOL_ERROR_PREVIEW_LENGTH]}... (length {len(value)})"

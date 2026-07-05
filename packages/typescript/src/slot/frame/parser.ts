@@ -14,7 +14,7 @@ export type SlotFrameParserEvent =
 const PROTOCOL_ERROR_PREVIEW_LENGTH = 160;
 const HEADER_PATTERN = /^<(?<id>\d+)(?::(?<index>\d+))?>/;
 const PARTIAL_ID_HEADER_PATTERN = /^<\d*$/;
-const PARTIAL_INDEXED_HEADER_PATTERN = /^<(?<id>\d+):\d*$/;
+const PARTIAL_INDEXED_HEADER_PATTERN = /^<(?<id>\d+):(?<index>\d*)$/;
 
 type ParserState = "headers" | "value";
 
@@ -62,17 +62,16 @@ export class SlotFrameParser {
           if (this.mightBePartialHeader()) {
             return events;
           }
+          const preview = this.headerPreview();
+          this.buffer = "";
           throw new SlotFlightSlotProtocolError(
-            `Expected slot id header but received ${formatProtocolPreview(this.headerPreview())}.`,
+            `Expected slot id header but received ${formatProtocolPreview(preview)}.`,
             true
           );
         }
 
         const id = headerMatch.groups.id;
-        const frameIndex =
-          headerMatch.groups.index === undefined
-            ? undefined
-            : Number(headerMatch.groups.index);
+        const rawIndex = headerMatch.groups.index;
         const header = headerMatch[0];
         if (this.buffer.length < header.length) {
           return events;
@@ -86,27 +85,22 @@ export class SlotFrameParser {
           );
         }
         const repeatable = this.repeatableSlots.has(path);
-        if (frameIndex !== undefined && !repeatable) {
+        if (rawIndex !== undefined && !repeatable) {
           throw new SlotFlightSlotProtocolError(
             `Received indexed frame for fixed slot "${path}".`,
             true
           );
         }
-        if (frameIndex === undefined && repeatable) {
+        if (rawIndex === undefined && repeatable) {
           throw new SlotFlightSlotProtocolError(
             `Repeatable slot "${path}" must use indexed tags like <${id}:0>.`,
             true
           );
         }
-        if (frameIndex !== undefined) {
-          const expectedIndex = this.nextRepeatIndexes.get(path) ?? 0;
-          if (frameIndex !== expectedIndex) {
-            throw new SlotFlightSlotProtocolError(
-              `Expected repeat index ${String(expectedIndex)} for slot "${path}" but received ${String(frameIndex)}.`,
-              true
-            );
-          }
-        }
+        const frameIndex =
+          rawIndex === undefined
+            ? undefined
+            : this.parseExpectedRepeatIndex(path, rawIndex);
 
         const completedKey = frameKey(path, frameIndex);
         if (this.completed.has(completedKey)) {
@@ -240,11 +234,34 @@ export class SlotFrameParser {
     }
 
     const indexed = PARTIAL_INDEXED_HEADER_PATTERN.exec(this.buffer);
-    return (
-      indexed?.groups !== undefined &&
-      indexed.groups.id.length <= this.maxSlotIdDigits &&
-      this.slotsById.has(indexed.groups.id)
-    );
+    if (indexed?.groups === undefined) {
+      return false;
+    }
+
+    const id = indexed.groups.id;
+    if (id.length > this.maxSlotIdDigits) {
+      return false;
+    }
+
+    const path = this.slotsById.get(id);
+    if (path === undefined || !this.repeatableSlots.has(path)) {
+      return false;
+    }
+
+    const expectedIndex = String(this.nextRepeatIndexes.get(path) ?? 0);
+    return expectedIndex.startsWith(indexed.groups.index);
+  }
+
+  private parseExpectedRepeatIndex(path: string, rawIndex: string): number {
+    const expectedIndex = this.nextRepeatIndexes.get(path) ?? 0;
+    const expected = String(expectedIndex);
+    if (rawIndex !== expected) {
+      throw new SlotFlightSlotProtocolError(
+        `Expected repeat index ${expected} for slot "${path}" but received ${formatIndexForError(rawIndex)}.`,
+        true
+      );
+    }
+    return expectedIndex;
   }
 
   private headerPreview(): string {
@@ -344,4 +361,11 @@ function formatProtocolPreview(value: string): string {
     return `"${escaped}"`;
   }
   return `"${escaped.slice(0, PROTOCOL_ERROR_PREVIEW_LENGTH)}..." (length ${value.length})`;
+}
+
+function formatIndexForError(value: string): string {
+  if (value.length <= PROTOCOL_ERROR_PREVIEW_LENGTH) {
+    return value;
+  }
+  return `${value.slice(0, PROTOCOL_ERROR_PREVIEW_LENGTH)}... (length ${value.length})`;
 }
