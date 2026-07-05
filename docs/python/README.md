@@ -39,6 +39,12 @@ objects and arrays are expanded into structural slots such as
 indexed frames such as `<2:0>...</2:0>`, and the engine maps those indexes to
 JSON paths during assembly.
 
+Lists of models stream field-by-field, so partial updates preserve object
+structure while each leaf value is still validated independently. Dynamic
+mapping fields are not inferred because their keys are not known ahead of
+streaming; model those outputs as explicit fields or handle them outside
+`slot_object()`.
+
 Failed slot validation retries only the failed slots up to `max_retries`.
 
 ## Stream Views

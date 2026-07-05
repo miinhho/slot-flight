@@ -22,6 +22,19 @@ json assembly
 </3:1>
 ```
 
+## Structural Streaming
+
+Nested objects and arrays stream as individual raw slot values. Array fields use
+indexed frame tags such as `<3:0>...</3:0>`, and arrays of objects stream each
+item field separately.
+
+This lets the SDK assemble the final object while preserving typed validation
+and partial updates during streaming.
+
+Dynamic key/value objects such as records, maps, and mappings cannot be inferred
+as structural slots because their keys are not known ahead of streaming. Model
+them as explicit fields or handle them outside `slotObject()` / `slot_object()`.
+
 ## Repository Layout
 
 This repository is organized as a multi-language SDK workspace:

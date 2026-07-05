@@ -44,6 +44,12 @@ Objects and arrays are expanded into structural slots such as
 slot values in indexed repeat frames such as `<2:0>...</2:0>`, while the engine
 maps those indexes to JSON paths and owns final assembly.
 
+Arrays of objects stream field-by-field, so partial updates preserve object
+structure while each leaf value is still validated independently. Dynamic
+`record` and `map` schemas are not inferred because their keys are not known
+ahead of streaming; model those outputs as explicit fields or handle them
+outside `slotObject()`.
+
 `streamSlotObject()` exposes one live model run through several views:
 
 - `completedSlotStream`: validated slot values, one event per completed slot.
