@@ -78,6 +78,46 @@ export function expandSlotPath(path: string, count?: number): string[] {
   return paths;
 }
 
+export function countArrayWildcards(path: string): number {
+  return parseSlotTemplate(path).filter(
+    (token) => token.type === "array-wildcard"
+  ).length;
+}
+
+export function hasArrayWildcard(path: string): boolean {
+  return countArrayWildcards(path) > 0;
+}
+
+export function isAppendTemplatePath(path: string): boolean {
+  const tokens = parseSlotTemplate(path);
+  return tokens.at(-1)?.type === "array-wildcard";
+}
+
+export function arrayWildcardPath(path: string): string {
+  const wildcardIndex = path.indexOf("[]");
+  if (wildcardIndex === -1) {
+    throw new SlotFlightConfigurationError(
+      `Slot path "${path}" does not contain an array wildcard.`
+    );
+  }
+  return path.slice(0, wildcardIndex);
+}
+
+export function concretePathForArrayItem(path: string, index: number): string {
+  if (!Number.isInteger(index) || index < 0) {
+    throw new SlotFlightConfigurationError(
+      `Array item index must be a non-negative integer.`
+    );
+  }
+  const wildcardCount = countArrayWildcards(path);
+  if (wildcardCount !== 1) {
+    throw new SlotFlightConfigurationError(
+      `Slot path "${path}" must contain exactly one [] wildcard.`
+    );
+  }
+  return path.replace("[]", `[${String(index)}]`);
+}
+
 export function parseConcretePath(path: string): ConcreteToken[] {
   if (path.trim() === "") {
     throw new SlotFlightConfigurationError("Concrete path cannot be empty.");
@@ -185,6 +225,88 @@ export function setPathValue(
   throw new SlotFlightConfigurationError(
     `Cannot set value for path "${path}".`
   );
+}
+
+export function clearTemplatePathValues(target: unknown, path: string): void {
+  if (!isRecord(target)) {
+    return;
+  }
+
+  const tokens = parseSlotTemplate(path);
+  const wildcardCount = tokens.filter(
+    (token) => token.type === "array-wildcard"
+  ).length;
+  if (wildcardCount !== 1) {
+    throw new SlotFlightConfigurationError(
+      `Slot path "${path}" must contain exactly one [] wildcard.`
+    );
+  }
+
+  clearTemplateTokens(target, tokens, 0);
+}
+
+export function hasPathValue(target: unknown, path: string): boolean {
+  if (!isRecord(target)) {
+    return false;
+  }
+
+  const tokens = parseConcretePath(path);
+  let current: unknown = target;
+
+  for (const token of tokens) {
+    if (token.type === "property") {
+      if (!isRecord(current) || !Object.hasOwn(current, token.key)) {
+        return false;
+      }
+      current = current[token.key];
+      continue;
+    }
+
+    if (!Array.isArray(current) || !(token.index in current)) {
+      return false;
+    }
+    current = current[token.index];
+  }
+
+  return true;
+}
+
+function clearTemplateTokens(
+  current: unknown,
+  tokens: TemplateToken[],
+  index: number
+): void {
+  const token = tokens[index];
+  if (token === undefined) {
+    return;
+  }
+
+  if (token.type === "property") {
+    if (!isRecord(current) || !Object.hasOwn(current, token.key)) {
+      return;
+    }
+
+    if (index === tokens.length - 1) {
+      delete current[token.key];
+      return;
+    }
+
+    clearTemplateTokens(current[token.key], tokens, index + 1);
+    return;
+  }
+
+  if (!Array.isArray(current)) {
+    return;
+  }
+
+  if (index === tokens.length - 1) {
+    current.length = 0;
+    return;
+  }
+
+  for (const item of current) {
+    clearTemplateTokens(item, tokens, index + 1);
+  }
 }
 
 function escapePointer(segment: string): string {

@@ -1,19 +1,27 @@
 import { SlotFlightSlotProtocolError } from "../../errors.js";
 
 export type SlotFrameParserEvent =
-  | { type: "slot-start"; slot: string }
-  | { type: "slot-delta"; slot: string; delta: string; value: string }
-  | { type: "slot-complete"; slot: string; value: string };
+  | { type: "slot-start"; slot: string; index?: number }
+  | {
+      type: "slot-delta";
+      slot: string;
+      index?: number;
+      delta: string;
+      value: string;
+    }
+  | { type: "slot-complete"; slot: string; index?: number; value: string };
 
 const PROTOCOL_ERROR_PREVIEW_LENGTH = 160;
-const HEADER_PATTERN = /^<(?<id>\d+)>/;
-const PARTIAL_HEADER_PATTERN = /^<\d*$/;
+const HEADER_PATTERN = /^<(?<id>\d+)(?::(?<index>\d+))?>/;
+const PARTIAL_ID_HEADER_PATTERN = /^<\d*$/;
+const PARTIAL_INDEXED_HEADER_PATTERN = /^<(?<id>\d+):(?<index>\d*)$/;
 
 type ParserState = "headers" | "value";
 
 interface CurrentFrame {
-  id: string;
+  tag: string;
   path: string;
+  index?: number;
   value: string;
   allowsImmediateClosing: boolean;
 }
@@ -23,9 +31,13 @@ export class SlotFrameParser {
   private buffer = "";
   private current: CurrentFrame | undefined;
   private readonly completed = new Set<string>();
+  private readonly nextRepeatIndexes = new Map<string, number>();
   private readonly maxSlotIdDigits: number;
 
-  constructor(private readonly slotsById: Map<string, string>) {
+  constructor(
+    private readonly slotsById: Map<string, string>,
+    private readonly repeatableSlots: ReadonlySet<string> = new Set()
+  ) {
     this.maxSlotIdDigits = Math.max(
       1,
       ...Array.from(slotsById.keys(), (id) => id.length)
@@ -50,13 +62,16 @@ export class SlotFrameParser {
           if (this.mightBePartialHeader()) {
             return events;
           }
+          const preview = this.headerPreview();
+          this.buffer = "";
           throw new SlotFlightSlotProtocolError(
-            `Expected slot id header but received ${formatProtocolPreview(this.headerPreview())}.`,
+            `Expected slot id header but received ${formatProtocolPreview(preview)}.`,
             true
           );
         }
 
         const id = headerMatch.groups.id;
+        const rawIndex = headerMatch.groups.index;
         const header = headerMatch[0];
         if (this.buffer.length < header.length) {
           return events;
@@ -69,21 +84,45 @@ export class SlotFrameParser {
             false
           );
         }
-        if (this.completed.has(path)) {
+        const repeatable = this.repeatableSlots.has(path);
+        if (rawIndex !== undefined && !repeatable) {
           throw new SlotFlightSlotProtocolError(
-            `Received duplicate slot "${path}".`,
+            `Received indexed frame for fixed slot "${path}".`,
+            true
+          );
+        }
+        if (rawIndex === undefined && repeatable) {
+          throw new SlotFlightSlotProtocolError(
+            `Repeatable slot "${path}" must use indexed tags like <${id}:0>.`,
+            true
+          );
+        }
+        const frameIndex =
+          rawIndex === undefined
+            ? undefined
+            : this.parseExpectedRepeatIndex(path, rawIndex);
+
+        const completedKey = frameKey(path, frameIndex);
+        if (this.completed.has(completedKey)) {
+          throw new SlotFlightSlotProtocolError(
+            `Received duplicate slot "${completedKey}".`,
             false
           );
         }
 
         this.current = {
-          id,
+          tag: header.slice(1, -1),
           path,
+          index: frameIndex,
           value: "",
           allowsImmediateClosing: this.consumeOpeningLineBreak(header.length)
         };
         this.state = "value";
-        events.push({ type: "slot-start", slot: path });
+        events.push({
+          type: "slot-start",
+          slot: path,
+          ...eventIndex(frameIndex)
+        });
       }
 
       if (this.state === "value") {
@@ -121,7 +160,7 @@ export class SlotFrameParser {
     }
 
     const events: SlotFrameParserEvent[] = [];
-    const closing = `</${this.current.id}>`;
+    const closing = `</${this.current.tag}>`;
     const closingIndex = findLineDelimitedClosing(
       this.buffer,
       closing,
@@ -137,6 +176,7 @@ export class SlotFrameParser {
         events.push({
           type: "slot-delta",
           slot: this.current.path,
+          ...eventIndex(this.current.index),
           delta,
           value: this.current.value
         });
@@ -144,9 +184,13 @@ export class SlotFrameParser {
       events.push({
         type: "slot-complete",
         slot: this.current.path,
+        ...eventIndex(this.current.index),
         value: this.current.value
       });
-      this.completed.add(this.current.path);
+      this.completed.add(frameKey(this.current.path, this.current.index));
+      if (this.current.index !== undefined) {
+        this.nextRepeatIndexes.set(this.current.path, this.current.index + 1);
+      }
       this.buffer = this.buffer.slice(closingIndex + closing.length);
       this.current = undefined;
       this.state = "headers";
@@ -166,6 +210,7 @@ export class SlotFrameParser {
     events.push({
       type: "slot-delta",
       slot: this.current.path,
+      ...eventIndex(this.current.index),
       delta,
       value: this.current.value
     });
@@ -181,10 +226,42 @@ export class SlotFrameParser {
   }
 
   private mightBePartialHeader(): boolean {
-    return (
+    if (
       this.buffer.length <= this.maxSlotIdDigits + 1 &&
-      PARTIAL_HEADER_PATTERN.test(this.buffer)
-    );
+      PARTIAL_ID_HEADER_PATTERN.test(this.buffer)
+    ) {
+      return true;
+    }
+
+    const indexed = PARTIAL_INDEXED_HEADER_PATTERN.exec(this.buffer);
+    if (indexed?.groups === undefined) {
+      return false;
+    }
+
+    const id = indexed.groups.id;
+    if (id.length > this.maxSlotIdDigits) {
+      return false;
+    }
+
+    const path = this.slotsById.get(id);
+    if (path === undefined || !this.repeatableSlots.has(path)) {
+      return false;
+    }
+
+    const expectedIndex = String(this.nextRepeatIndexes.get(path) ?? 0);
+    return expectedIndex.startsWith(indexed.groups.index);
+  }
+
+  private parseExpectedRepeatIndex(path: string, rawIndex: string): number {
+    const expectedIndex = this.nextRepeatIndexes.get(path) ?? 0;
+    const expected = String(expectedIndex);
+    if (rawIndex !== expected) {
+      throw new SlotFlightSlotProtocolError(
+        `Expected repeat index ${expected} for slot "${path}" but received ${formatIndexForError(rawIndex)}.`,
+        true
+      );
+    }
+    return expectedIndex;
   }
 
   private headerPreview(): string {
@@ -204,6 +281,14 @@ export class SlotFrameParser {
     }
     return false;
   }
+}
+
+function frameKey(path: string, index: number | undefined): string {
+  return index === undefined ? path : `${path}:${String(index)}`;
+}
+
+function eventIndex(index: number | undefined): { index: number } | object {
+  return index === undefined ? {} : { index };
 }
 
 function stripOneTrailingLineBreak(value: string): string {
@@ -276,4 +361,11 @@ function formatProtocolPreview(value: string): string {
     return `"${escaped}"`;
   }
   return `"${escaped.slice(0, PROTOCOL_ERROR_PREVIEW_LENGTH)}..." (length ${value.length})`;
+}
+
+function formatIndexForError(value: string): string {
+  if (value.length <= PROTOCOL_ERROR_PREVIEW_LENGTH) {
+    return value;
+  }
+  return `${value.slice(0, PROTOCOL_ERROR_PREVIEW_LENGTH)}... (length ${value.length})`;
 }

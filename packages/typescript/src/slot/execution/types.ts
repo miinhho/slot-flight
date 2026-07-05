@@ -13,6 +13,11 @@ export interface SlotExecutionOptions {
   maxRetries: number;
   signal?: AbortSignal;
   cloneState: <T>(value: T) => T;
+  validateRepeatState?: (options: {
+    state: unknown;
+    slots: CompiledSlot[];
+    attempts: ReadonlyMap<string, number>;
+  }) => Map<string, PendingFailure>;
 }
 
 export type SlotExecutionEvent = Exclude<SlotFlightEvent, { type: "done" }>;

@@ -21,6 +21,10 @@ bun add ai @ai-sdk/openai
 
 Define the output shape with Zod. Every generated field is registered through
 `.describe()`, which becomes the model-facing slot instruction.
+Objects and arrays are expanded into structural slots such as
+`metadata.audience`, `tags[]`, and `sections[].heading`; the model emits raw
+slot values in indexed repeat frames such as `<2:0>...</2:0>`, while the engine
+maps those indexes to JSON paths and owns final assembly.
 
 ```ts
 import OpenAI from "openai";

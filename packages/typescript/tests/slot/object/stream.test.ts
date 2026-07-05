@@ -104,6 +104,61 @@ describe("SlotObjectStream web output", () => {
     ]);
   });
 
+  it("keeps described nested objects structured during partial streaming", async () => {
+    const generate: SlotGenerator = async function* (request) {
+      const audience = request.slots.find(
+        (slot) => slot.path === "metadata.audience"
+      );
+      const priority = request.slots.find(
+        (slot) => slot.path === "metadata.priority"
+      );
+      expect(audience).toBeDefined();
+      expect(priority).toBeDefined();
+
+      yield `<${audience?.id}>backend`;
+      yield ` engineers\n</${audience?.id}>`;
+      yield `<${priority?.id}>high\n</${priority?.id}>`;
+    };
+
+    const stream = createSlotObjectStream<{
+      metadata: { audience: string; priority: "low" | "high" };
+    }>(
+      slotFlight({
+        schema: z.object({
+          metadata: z
+            .object({
+              audience: z.string().min(1),
+              priority: z.enum(["low", "high"])
+            })
+            .describe("Write the metadata object.")
+        }),
+        generate,
+        slots: slotObject({
+          schema: z.object({
+            metadata: z
+              .object({
+                audience: z.string().min(1),
+                priority: z.enum(["low", "high"])
+              })
+              .describe("Write the metadata object.")
+          })
+        }).slots
+      }).run()
+    );
+
+    const partials: unknown[] = [];
+    for await (const partial of stream.partialObjectStream) {
+      partials.push(partial);
+    }
+
+    expect(partials).toContainEqual({
+      metadata: { audience: "backend engineers" }
+    });
+    expect(partials).not.toContainEqual({
+      metadata: expect.any(String)
+    });
+  });
+
   it("can return an HTTP Response over low-level slot events", async () => {
     const generate: SlotGenerator = async function* (request) {
       const slot = firstSlot(request);

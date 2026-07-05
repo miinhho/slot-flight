@@ -1,7 +1,6 @@
 from .errors import (
     SlotFlightConfigurationError,
     SlotFlightError,
-    SlotFlightJsonParseError,
     SlotFlightSlotProtocolError,
     SlotFlightStreamError,
     SlotFlightValidationError,
@@ -29,7 +28,6 @@ __all__ = [
     "SlotFlight",
     "SlotFlightConfigurationError",
     "SlotFlightError",
-    "SlotFlightJsonParseError",
     "SlotFlightRequest",
     "SlotFlightSlotProtocolError",
     "SlotFlightStreamError",

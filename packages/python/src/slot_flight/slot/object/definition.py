@@ -1,13 +1,13 @@
 from __future__ import annotations
 
+from collections.abc import Mapping, MutableMapping
 from dataclasses import dataclass
-from enum import Enum
-from typing import Any, Literal, get_args, get_origin
+from typing import Any, get_args, get_origin
 
 from pydantic import BaseModel, TypeAdapter
 
 from ...errors import SlotFlightConfigurationError
-from ...types import Prompt, SlotDefinition, SlotGenerator, SlotMode
+from ...types import Prompt, SlotDefinition, SlotGenerator
 from ..execution import SlotFlight
 from .stream import SlotObjectStream
 
@@ -61,56 +61,101 @@ def create_slot_object_stream(
     return SlotObjectStream(create_events)
 
 
-def _infer_slots(model: type[BaseModel], prefix: str = "") -> list[SlotDefinition]:
+def _infer_slots(
+    model: type[BaseModel],
+    prefix: str = "",
+    inherited_prompts: tuple[str, ...] = (),
+) -> list[SlotDefinition]:
     slots: list[SlotDefinition] = []
     for name, field in model.model_fields.items():
         path = f"{prefix}.{name}" if prefix else name
         annotation = field.annotation
-        description = field.description
+        prompts = inherited_prompts
+        if field.description:
+            prompts = (*prompts, field.description)
 
-        if description:
-            slots.append(
-                SlotDefinition(
-                    path=path,
-                    prompt=description,
-                    validate=TypeAdapter(annotation).validate_python,
-                    mode=_slot_mode(annotation),
-                )
+        slots.extend(
+            _infer_annotation_slots(
+                annotation=annotation,
+                path=path,
+                prompts=prompts,
             )
-            continue
-
-        nested = _model_type(annotation)
-        if nested is not None:
-            slots.extend(_infer_slots(nested, path))
-            continue
-
-        raise SlotFlightConfigurationError(
-            f'Pydantic field "{path}" must use Field(description=...) '
-            "to become a slot."
         )
     return slots
 
 
-def _slot_mode(annotation: Any) -> SlotMode:
-    if _is_text_annotation(annotation):
-        return "text"
-    return "json"
+def _infer_annotation_slots(
+    *,
+    annotation: Any,
+    path: str,
+    prompts: tuple[str, ...],
+) -> list[SlotDefinition]:
+    nested = _model_type(annotation)
+    if nested is not None:
+        return _infer_slots(nested, path, prompts)
+
+    if _mapping_annotation(annotation):
+        raise SlotFlightConfigurationError(
+            f'Pydantic field "{path}" cannot infer structural slots '
+            "for dynamic mapping values."
+        )
+
+    item_annotation = _list_item_annotation(annotation)
+    if item_annotation is not None:
+        nested_item = _model_type(item_annotation)
+        if nested_item is not None:
+            return _infer_slots(nested_item, f"{path}[]", prompts)
+        if _mapping_annotation(item_annotation):
+            raise SlotFlightConfigurationError(
+                f'Array field "{path}" cannot infer structural slots '
+                "for dynamic mapping items."
+            )
+        if _list_item_annotation(item_annotation) is not None:
+            raise SlotFlightConfigurationError(
+                f'Array field "{path}" cannot infer structural slots '
+                "for nested array items."
+            )
+        return _leaf_slot(
+            path=f"{path}[]",
+            annotation=item_annotation,
+            prompts=prompts,
+        )
+
+    return _leaf_slot(path=path, annotation=annotation, prompts=prompts)
 
 
-def _is_text_annotation(annotation: Any) -> bool:
-    if annotation is str:
-        return True
+def _leaf_slot(
+    *,
+    path: str,
+    annotation: Any,
+    prompts: tuple[str, ...],
+) -> list[SlotDefinition]:
+    prompt = "\n".join(prompts)
+    if prompt == "":
+        raise SlotFlightConfigurationError(
+            f'Pydantic field "{path}" must use Field(description=...) '
+            "to become a slot."
+        )
+    return [
+        SlotDefinition(
+            path=path,
+            prompt=prompt,
+            validate=TypeAdapter(annotation).validate_python,
+        )
+    ]
 
+
+def _list_item_annotation(annotation: Any) -> Any | None:
     origin = get_origin(annotation)
-    if origin is Literal:
+    if origin is list:
         args = get_args(annotation)
-        return bool(args) and all(isinstance(arg, str) for arg in args)
+        return args[0] if args else Any
+    return None
 
-    if isinstance(annotation, type) and issubclass(annotation, str):
-        return True
-    if isinstance(annotation, type) and issubclass(annotation, Enum):
-        return issubclass(annotation, str)
-    return False
+
+def _mapping_annotation(annotation: Any) -> bool:
+    origin = get_origin(annotation)
+    return annotation is dict or origin in {dict, Mapping, MutableMapping}
 
 
 def _model_type(annotation: Any) -> type[BaseModel] | None:

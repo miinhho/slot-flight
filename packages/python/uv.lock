@@ -1143,6 +1143,9 @@ openai-compatible = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "httpx" },
+    { name = "langchain-core" },
+    { name = "openai" },
     { name = "pytest" },
     { name = "ruff" },
     { name = "twine" },
@@ -1163,6 +1166,9 @@ provides-extras = ["langchain", "openai", "openai-compatible", "adapters"]
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "httpx", specifier = ">=0.28" },
+    { name = "langchain-core", specifier = ">=0.3" },
+    { name = "openai", specifier = ">=1" },
     { name = "pytest", specifier = ">=8" },
     { name = "ruff", specifier = ">=0.8" },
     { name = "twine", specifier = ">=6" },

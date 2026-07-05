@@ -34,7 +34,7 @@ const articleSlots = [
     schema: z.enum(["positive", "neutral", "negative", "mixed"])
   },
   { path: "priority", schema: z.enum(["low", "medium", "high"]) },
-  { path: "tags", schema: z.array(z.string().min(1)).length(3), mode: "json" }
+  { path: "tags[]", schema: z.string().min(1) }
 ] satisfies Parameters<typeof slotFlight<typeof articleSchema>>[0]["slots"];
 
 const valueByPath: Record<string, string> = {
@@ -42,11 +42,19 @@ const valueByPath: Record<string, string> = {
   summary: "Generate values while the server assembles JSON.",
   sentiment: "mixed",
   priority: "high",
-  tags: '["streaming","json","zod"]'
+  "tags[]": "streaming"
 };
 
 export const articleGenerator: SlotGenerator = async function* (request) {
   for (const slot of request.slots) {
+    if (slot.path === "tags[]") {
+      for (const [index, tag] of ["streaming", "json", "zod"].entries()) {
+        yield `<${slot.id}:${String(index)}>`;
+        yield tag;
+        yield `\n</${slot.id}:${String(index)}>`;
+      }
+      continue;
+    }
     yield `<${slot.id}>`;
     yield valueByPath[slot.path] ?? "value";
     yield `\n</${slot.id}>`;
@@ -64,7 +72,7 @@ const describedArticleOutput = slotObject({
     tags: z
       .array(z.string().min(1))
       .length(3)
-      .describe("Write a JSON array of exactly 3 tags.")
+      .describe("Write exactly 3 tags, one per frame.")
   })
 });
 
@@ -91,40 +99,36 @@ export function makeVercelStream() {
             path: "title",
             templatePath: "title",
             prompt: "Write a short title.",
-            attempt: 1,
-            mode: "text"
+            attempt: 1
           },
           {
             id: "2",
             path: "summary",
             templatePath: "summary",
             prompt: "Write a summary.",
-            attempt: 1,
-            mode: "text"
+            attempt: 1
           },
           {
             id: "3",
             path: "sentiment",
             templatePath: "sentiment",
             prompt: "Write one sentiment.",
-            attempt: 1,
-            mode: "text"
+            attempt: 1
           },
           {
             id: "4",
             path: "priority",
             templatePath: "priority",
             prompt: "Write a priority.",
-            attempt: 1,
-            mode: "text"
+            attempt: 1
           },
           {
             id: "5",
-            path: "tags",
-            templatePath: "tags",
-            prompt: "Write a JSON array of exactly 3 tags.",
+            path: "tags[]",
+            templatePath: "tags[]",
+            prompt: "Write exactly 3 tags, one per frame.",
             attempt: 1,
-            mode: "json"
+            repeat: "append"
           }
         ],
         attempt: 1,

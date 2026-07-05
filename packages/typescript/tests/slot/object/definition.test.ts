@@ -17,13 +17,11 @@ describe("slotObject definitions", () => {
     expect(output.slots).toEqual([
       expect.objectContaining({
         path: "title",
-        prompt: "Write a title.",
-        mode: "text"
+        prompt: "Write a title."
       }),
       expect.objectContaining({
         path: "metadata.audience",
-        prompt: "Write the intended audience.",
-        mode: "text"
+        prompt: "Write the intended audience."
       })
     ]);
     expect(output.slots[1]?.schema.safeParse("")).toMatchObject({
@@ -31,7 +29,7 @@ describe("slotObject definitions", () => {
     });
   });
 
-  it("uses one JSON slot for described array and object fields", () => {
+  it("expands described array and object fields into structural slots", () => {
     const output = slotObject({
       schema: z.object({
         tags: z
@@ -49,14 +47,16 @@ describe("slotObject definitions", () => {
 
     expect(output.slots).toEqual([
       expect.objectContaining({
-        path: "tags",
-        prompt: "Write exactly 3 tags.",
-        mode: "json"
+        path: "tags[]",
+        prompt: "Write exactly 3 tags."
       }),
       expect.objectContaining({
-        path: "metadata",
-        prompt: "Write the metadata object.",
-        mode: "json"
+        path: "metadata.audience",
+        prompt: "Write the metadata object."
+      }),
+      expect.objectContaining({
+        path: "metadata.priority",
+        prompt: "Write the metadata object."
       })
     ]);
   });
@@ -66,6 +66,18 @@ describe("slotObject definitions", () => {
       slotObject({
         schema: z.object({
           title: z.string()
+        })
+      })
+    ).toThrow(SlotFlightConfigurationError);
+  });
+
+  it("rejects dynamic object fields", () => {
+    expect(() =>
+      slotObject({
+        schema: z.object({
+          payload: z
+            .record(z.string(), z.string())
+            .describe("Write payload fields.")
         })
       })
     ).toThrow(SlotFlightConfigurationError);

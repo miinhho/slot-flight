@@ -5,7 +5,6 @@ export {
 export {
   SlotFlightConfigurationError,
   SlotFlightError,
-  SlotFlightJsonParseError,
   SlotFlightSlotProtocolError,
   SlotFlightStreamError,
   SlotFlightValidationError

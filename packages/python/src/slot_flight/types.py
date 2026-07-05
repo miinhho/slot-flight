@@ -4,10 +4,10 @@ from collections.abc import AsyncIterable, Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any, Literal, TypeAlias
 
-SlotMode: TypeAlias = Literal["text", "json"]
 Validator: TypeAlias = Callable[[Any], Any]
 PromptFactory: TypeAlias = Callable[["SlotFrameRequest"], str]
 Prompt: TypeAlias = str | Callable[["SlotFlightRequest"], str]
+SlotRepeat: TypeAlias = Literal["none", "append", "item-field"]
 SlotGenerator: TypeAlias = Callable[
     ["SlotFlightRequest"], AsyncIterable[str] | Awaitable[AsyncIterable[str]]
 ]
@@ -18,7 +18,6 @@ class SlotDefinition:
     path: str
     prompt: str | PromptFactory = ""
     validate: Validator | None = None
-    mode: SlotMode = "text"
     count: int | None = None
     max_retries: int | None = None
 
@@ -30,7 +29,7 @@ class SlotFrameRequest:
     template_path: str
     prompt: str
     attempt: int
-    mode: SlotMode
+    repeat: SlotRepeat = "none"
 
 
 @dataclass(frozen=True)

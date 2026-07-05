@@ -11,18 +11,17 @@ from slot_flight.adapters.langchain import stream_slot_object
 
 class Summary(BaseModel):
     title: str = Field(description="Write a short title.")
-    bullets: list[str] = Field(description="Write a JSON array of exactly 3 bullets.")
+    bullets: list[str] = Field(description="Write exactly 3 bullet strings.")
 
 
 async def main() -> None:
     output = slot_object(Summary)
 
     runnable = RunnableLambda(
-        lambda messages: "<1>Adapter contract\n</1>\n<2>["
-        '"uses LangChain Runnable streams",'
-        '"keeps JSON assembly server-owned",'
-        '"works with provider chat models"'
-        "]\n</2>"
+        lambda messages: "<1>Adapter contract\n</1>\n"
+        "<2:0>uses LangChain Runnable streams\n</2:0>\n"
+        "<2:1>keeps JSON assembly server-owned\n</2:1>\n"
+        "<2:2>works with provider chat models\n</2:2>"
     )
 
     stream = stream_slot_object(

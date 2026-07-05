@@ -22,7 +22,7 @@ from slot_flight.adapters.openai import stream_slot_object
 
 class Triage(BaseModel):
     summary: str = Field(description="Write one concise operational summary.")
-    tags: list[str] = Field(description="Write a JSON array of exactly 3 tags.")
+    tags: list[str] = Field(description="Write exactly 3 tags, one per frame.")
 
 
 openai = AsyncOpenAI(
@@ -52,13 +52,14 @@ for the slot.
 ```py
 class Triage(BaseModel):
     summary: str = Field(description="Write one concise operational summary.")
-    tags: list[str] = Field(description="Write a JSON array of exactly 3 tags.")
+    tags: list[str] = Field(description="Write exactly 3 tags, one per frame.")
 ```
 
-String fields, string enums, and string literals use text slots. Other described
-fields use JSON slots and are parsed before Pydantic validates the value. A
-nested model without its own field description is expanded into nested slots; a
-nested model with a description becomes one JSON slot.
+The model always emits raw slot values, not JSON objects or arrays. Pydantic
+objects and arrays are expanded into structural slots such as
+`metadata.audience`, `tags[]`, and `sections[].heading`; repeat values use
+indexed frames such as `<2:0>...</2:0>`, and the engine maps those indexes to
+JSON paths during assembly.
 
 Failed slot validation retries only the failed slots up to `max_retries`:
 

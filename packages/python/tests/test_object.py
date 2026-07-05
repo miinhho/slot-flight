@@ -22,7 +22,7 @@ class Article(BaseModel):
     priority: Literal["low", "medium", "high"] = Field(
         description="Write exactly one of: low, medium, high."
     )
-    tags: list[str] = Field(description="Write a JSON array of two tags.")
+    tags: list[str] = Field(description="Write two tags, one tag per frame.")
     metadata: Metadata
 
 
@@ -39,12 +39,12 @@ class SlotObjectTest(unittest.IsolatedAsyncioTestCase):
         output = slot_object(Article)
 
         self.assertEqual(
-            [(slot.path, slot.mode, slot.prompt) for slot in output.slots],
+            [(slot.path, slot.prompt) for slot in output.slots],
             [
-                ("title", "text", "Write a short title."),
-                ("priority", "text", "Write exactly one of: low, medium, high."),
-                ("tags", "json", "Write a JSON array of two tags."),
-                ("metadata.audience", "text", "Write the intended audience."),
+                ("title", "Write a short title."),
+                ("priority", "Write exactly one of: low, medium, high."),
+                ("tags[]", "Write two tags, one tag per frame."),
+                ("metadata.audience", "Write the intended audience."),
             ],
         )
 
@@ -52,10 +52,13 @@ class SlotObjectTest(unittest.IsolatedAsyncioTestCase):
             values = {
                 "title": "Slot-wise JSON",
                 "priority": "high",
-                "tags": '["llm","json"]',
                 "metadata.audience": "backend engineers",
             }
             for slot in request.slots:
+                if slot.path == "tags[]":
+                    yield f"<{slot.id}:0>llm\n</{slot.id}:0>"
+                    yield f"<{slot.id}:1>json\n</{slot.id}:1>"
+                    continue
                 yield f"<{slot.id}>{values[slot.path]}\n</{slot.id}>"
 
         stream = create_slot_object_stream(output=output, generate=generate)
@@ -82,6 +85,16 @@ class SlotObjectTest(unittest.IsolatedAsyncioTestCase):
         ):
             slot_object(MissingDescription)
 
+    def test_rejects_dynamic_mapping_fields(self):
+        class DynamicPayload(BaseModel):
+            payload: dict[str, str] = Field(description="Write payload fields.")
+
+        with self.assertRaisesRegex(
+            SlotFlightConfigurationError,
+            'Pydantic field "payload" cannot infer structural slots',
+        ):
+            slot_object(DynamicPayload)
+
     def test_rejects_non_pydantic_models(self):
         with self.assertRaisesRegex(
             SlotFlightConfigurationError,
@@ -98,10 +111,13 @@ class SlotObjectTest(unittest.IsolatedAsyncioTestCase):
             values = {
                 "title": "Slot-wise JSON",
                 "priority": "urgent" if request.attempt == 1 else "high",
-                "tags": '["llm","json"]',
                 "metadata.audience": "backend engineers",
             }
             for slot in request.slots:
+                if slot.path == "tags[]":
+                    yield f"<{slot.id}:0>llm\n</{slot.id}:0>"
+                    yield f"<{slot.id}:1>json\n</{slot.id}:1>"
+                    continue
                 yield f"<{slot.id}>{values[slot.path]}\n</{slot.id}>"
 
         stream = create_slot_object_stream(output=output, generate=generate)
@@ -115,24 +131,24 @@ class SlotObjectTest(unittest.IsolatedAsyncioTestCase):
                 [
                     "title:1",
                     "priority:1",
-                    "tags:1",
+                    "tags[]:1",
                     "metadata.audience:1",
                 ],
                 ["priority:2"],
             ],
         )
 
-    async def test_described_nested_model_becomes_one_json_slot(self):
+    async def test_described_nested_model_expands_to_structural_slot(self):
         output = slot_object(NestedArticle)
 
         self.assertEqual(
-            [(slot.path, slot.mode) for slot in output.slots],
-            [("metadata", "json")],
+            [slot.path for slot in output.slots],
+            ["metadata.audience"],
         )
 
         async def generate(request):
             slot = request.slots[0]
-            yield f'<{slot.id}>{{"audience":"backend engineers"}}\n</{slot.id}>'
+            yield f"<{slot.id}>backend engineers\n</{slot.id}>"
 
         stream = create_slot_object_stream(output=output, generate=generate)
 
@@ -140,6 +156,23 @@ class SlotObjectTest(unittest.IsolatedAsyncioTestCase):
             await stream.final_object(),
             NestedArticle(metadata=Metadata(audience="backend engineers")),
         )
+
+    async def test_described_nested_model_partial_stream_stays_structured(self):
+        output = slot_object(NestedArticle)
+
+        async def generate(request):
+            slot = request.slots[0]
+            yield f"<{slot.id}>backend"
+            yield f" engineers\n</{slot.id}>"
+
+        stream = create_slot_object_stream(output=output, generate=generate)
+        partials = [partial async for partial in stream.partial_object_stream()]
+
+        self.assertIn(
+            {"metadata": {"audience": "backend engineers"}},
+            partials,
+        )
+        self.assertNotIn({"metadata": "backend engineers"}, partials)
 
     async def test_completed_slots_and_final_object_share_one_model_run(self):
         output = slot_object(Article)
@@ -151,10 +184,13 @@ class SlotObjectTest(unittest.IsolatedAsyncioTestCase):
             values = {
                 "title": "Slot-wise JSON",
                 "priority": "high",
-                "tags": '["llm","json"]',
                 "metadata.audience": "backend engineers",
             }
             for slot in request.slots:
+                if slot.path == "tags[]":
+                    yield f"<{slot.id}:0>llm\n</{slot.id}:0>"
+                    yield f"<{slot.id}:1>json\n</{slot.id}:1>"
+                    continue
                 yield f"<{slot.id}>{values[slot.path]}\n</{slot.id}>"
 
         stream = create_slot_object_stream(output=output, generate=generate)
@@ -165,7 +201,7 @@ class SlotObjectTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(run_count, 1)
         self.assertEqual(
             [slot.slot for slot in completed],
-            [slot.path for slot in output.slots],
+            ["title", "priority", "tags[0]", "tags[1]", "metadata.audience"],
         )
         self.assertEqual(final_object.title, "Slot-wise JSON")
 
@@ -221,7 +257,7 @@ class SlotObjectTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             partials,
             [
-                {},
+                {"title": "Slot-wise JSON"},
                 {"title": "Slot-wise JSON"},
                 TitleOnly(title="Slot-wise JSON"),
             ],

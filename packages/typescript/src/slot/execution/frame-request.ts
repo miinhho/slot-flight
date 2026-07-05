@@ -47,7 +47,10 @@ export async function* runFrameRequest({
   try {
     const stream = await generate(request);
     const parser = new SlotFrameParser(
-      new Map(frameRequests.map((slot) => [slot.id, slot.path]))
+      new Map(frameRequests.map((slot) => [slot.id, slot.path])),
+      new Set(
+        slots.filter((slot) => slot.repeat !== "none").map((slot) => slot.path)
+      )
     );
 
     yield* consumeFrameStream({

@@ -38,7 +38,7 @@ const schema = z.object({
   tags: z
     .array(z.string().min(1).max(32))
     .length(3)
-    .describe("Write a JSON array of exactly 3 distinct short dashboard tags.")
+    .describe("Write exactly 3 distinct short dashboard tags.")
 });
 
 const stream = streamSlotObject({

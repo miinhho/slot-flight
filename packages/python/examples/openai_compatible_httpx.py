@@ -12,7 +12,7 @@ from slot_flight.adapters.openai_compatible import stream_slot_object
 class Triage(BaseModel):
     summary: str = Field(description="Write one concise operational summary.")
     priority: str = Field(description="Write exactly one of: low, medium, high.")
-    tags: list[str] = Field(description="Write a JSON array of exactly 3 tags.")
+    tags: list[str] = Field(description="Write exactly 3 short tags.")
 
 
 async def main() -> None:
