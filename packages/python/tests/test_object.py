@@ -332,6 +332,23 @@ class SlotObjectTest(unittest.IsolatedAsyncioTestCase):
             while True:
                 await iterator.__anext__()
 
+    async def test_final_object_rethrows_stream_failure_after_view_fails(self):
+        async def source():
+            yield {
+                "type": "slot-start",
+                "slot": "title",
+                "attempt": 1,
+                "state": {},
+            }
+            raise RuntimeError("provider disconnected")
+
+        stream = create_slot_object_event_stream(source)
+
+        with self.assertRaisesRegex(RuntimeError, "provider disconnected"):
+            [event async for event in stream.slot_event_stream()]
+        with self.assertRaisesRegex(RuntimeError, "provider disconnected"):
+            await stream.final_object()
+
 
 if __name__ == "__main__":
     unittest.main()

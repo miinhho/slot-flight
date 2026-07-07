@@ -19,6 +19,7 @@ class SlotObjectStream:
     def __init__(self, create_events: SlotObjectEventSource):
         self._create_events = create_events
         self._final_object: Any = _FINAL_OBJECT_UNSET
+        self._final_error: Exception | None = None
         self._consumed_by: str | None = None
 
     async def events(self):
@@ -60,11 +61,15 @@ class SlotObjectStream:
     async def final_object(self):
         if self._final_object is not _FINAL_OBJECT_UNSET:
             return self._final_object
+        if self._final_error is not None:
+            raise self._final_error
 
         async for _event in self._consume_run("final_object"):
             pass
         if self._final_object is not _FINAL_OBJECT_UNSET:
             return self._final_object
+        if self._final_error is not None:
+            raise self._final_error
         raise RuntimeError("Slot object stream ended without a final object.")
 
     async def to_sse(self, *, source: SlotObjectStreamSource = "completed"):
@@ -88,6 +93,9 @@ class SlotObjectStream:
                 raise RuntimeError(
                     "Slot object stream source completed without a done event."
                 )
+        except Exception as error:
+            self._final_error = error
+            raise
         finally:
             await close_stream(events)
 
