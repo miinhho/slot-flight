@@ -43,7 +43,6 @@
     "bench:perf": "bun bench/perf.ts",
     "build": "rm -rf dist && tsc -p tsconfig.build.json",
     "check": "biome check .",
-    "compare:ollama": "bun scripts/compare-ollama.ts",
     "example:openai": "bun examples/openai.ts",
     "example:vercel": "bun examples/vercel-ai-sdk.ts",
     "fix": "biome check --write .",
