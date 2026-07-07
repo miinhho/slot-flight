@@ -324,7 +324,7 @@ class SlotObjectTest(unittest.IsolatedAsyncioTestCase):
         iterator = stream.events().__aiter__()
         await iterator.__anext__()
 
-        with self.assertRaisesRegex(RuntimeError, "already has a live consumer"):
+        with self.assertRaisesRegex(RuntimeError, "already being consumed by events"):
             await stream.final_object()
 
         release.set()

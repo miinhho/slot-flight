@@ -12,18 +12,17 @@ from .web import (
 )
 
 SlotObjectEventSource = Callable[[], AsyncIterable[dict[str, Any]]]
+_FINAL_OBJECT_UNSET = object()
 
 
 class SlotObjectStream:
     def __init__(self, create_events: SlotObjectEventSource):
         self._create_events = create_events
-        self._events: list[dict[str, Any]] = []
-        self._final_object: Any | None = None
-        self._consumed = False
-        self._running = False
+        self._final_object: Any = _FINAL_OBJECT_UNSET
+        self._consumed_by: str | None = None
 
     async def events(self):
-        events = self._consume_run()
+        events = self._consume_run("events")
         try:
             async for event in events:
                 yield event
@@ -35,7 +34,7 @@ class SlotObjectStream:
             yield event
 
     async def completed_slots(self):
-        events = self._consume_run()
+        events = self._consume_run("completed_slot_stream")
         try:
             async for slot in completed_slot_iterator(events):
                 yield slot
@@ -47,7 +46,7 @@ class SlotObjectStream:
             yield slot
 
     async def partial_objects(self):
-        events = self._consume_run()
+        events = self._consume_run("partial_object_stream")
         try:
             async for partial in partial_object_iterator(events):
                 yield partial
@@ -59,43 +58,48 @@ class SlotObjectStream:
             yield partial
 
     async def final_object(self):
-        if self._final_object is not None:
+        if self._final_object is not _FINAL_OBJECT_UNSET:
             return self._final_object
 
-        async for event in self._consume_run():
-            if event["type"] == "done":
-                return event["state"]
+        async for _event in self._consume_run("final_object"):
+            pass
+        if self._final_object is not _FINAL_OBJECT_UNSET:
+            return self._final_object
         raise RuntimeError("Slot object stream ended without a final object.")
 
     async def to_sse(self, *, source: SlotObjectStreamSource = "completed"):
-        async for payload in stream_payloads(self._consume_run(), source):
+        async for payload in stream_payloads(self._consume_run("to_sse"), source):
             yield format_payload(payload, "sse")
 
     async def to_ndjson(self, *, source: SlotObjectStreamSource = "completed"):
-        async for payload in stream_payloads(self._consume_run(), source):
+        async for payload in stream_payloads(self._consume_run("to_ndjson"), source):
             yield format_payload(payload, "ndjson")
 
-    async def _consume_run(self):
-        if self._consumed:
-            for event in self._events:
-                yield event
-            return
+    async def _consume_run(self, consumer: str):
+        self._claim(consumer)
 
-        if self._running:
-            raise RuntimeError("Slot object stream already has a live consumer.")
-
-        self._running = True
         events = self._create_events()
         try:
             async for event in events:
-                self._events.append(event)
                 if event["type"] == "done":
                     self._final_object = event["state"]
                 yield event
+            if self._final_object is _FINAL_OBJECT_UNSET:
+                raise RuntimeError(
+                    "Slot object stream source completed without a done event."
+                )
         finally:
             await close_stream(events)
-            self._running = False
-            self._consumed = True
+
+    def _claim(self, consumer: str):
+        if self._consumed_by is None:
+            self._consumed_by = consumer
+            return
+
+        raise RuntimeError(
+            "Slot object stream is already being consumed by "
+            f"{self._consumed_by}. Choose one stream view per run."
+        )
 
 
 def create_slot_object_event_stream(
