@@ -51,12 +51,12 @@ export function toReadableStream<T>(
         const payload = next.value;
         controller.enqueue(encoder.encode(formatPayload(payload, format)));
       },
-      async cancel() {
+      cancel() {
         cancelled = true;
         // Browser/client cancellation should abort the underlying model run, not
         // just stop serializing bytes from this Response.
         onCancel?.();
-        await iterator?.return?.();
+        void iterator?.return?.();
       }
     },
     {

@@ -244,6 +244,22 @@ describe("SlotObjectStream web output", () => {
     expect(closed).toBe(true);
   });
 
+  it("rejects finalObject when a readable stream is cancelled before reading", async () => {
+    let started = false;
+    const source = async function* (): AsyncGenerator<SlotFlightEvent> {
+      started = true;
+      yield { type: "done", state: { status: "ok" } };
+    };
+
+    const stream = createSlotObjectStream<{ status: string }>(source());
+    const readable = stream.toReadableStream({ source: "events" });
+
+    await readable.cancel();
+
+    expect(started).toBe(false);
+    await expect(stream.finalObject).rejects.toThrow("Stream cancelled");
+  });
+
   it("rejects a second live view after finalObject starts consuming", async () => {
     const source = async function* (): AsyncGenerator<SlotFlightEvent> {
       yield { type: "slot-start", slot: "status", attempt: 1, state: {} };
