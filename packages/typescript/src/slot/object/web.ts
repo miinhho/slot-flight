@@ -31,34 +31,38 @@ export function toReadableStream<T>(
   let iterator: AsyncIterator<SlotObjectStreamPayload> | undefined;
   let cancelled = false;
 
-  return new ReadableStream({
-    async start(controller) {
-      iterator = streamPayloads<T>(events, source)[Symbol.asyncIterator]();
-      try {
-        while (!cancelled) {
-          const next = await iterator.next();
-          if (next.done) {
-            controller.close();
-            return;
-          }
+  return new ReadableStream(
+    {
+      async pull(controller) {
+        iterator ??= streamPayloads<T>(events, source)[Symbol.asyncIterator]();
+        if (cancelled) {
+          return;
+        }
 
-          const payload = next.value;
-          controller.enqueue(encoder.encode(formatPayload(payload, format)));
+        const next = await iterator.next();
+        if (cancelled) {
+          return;
         }
-      } catch (error) {
-        if (!cancelled) {
-          controller.error(error);
+        if (next.done) {
+          controller.close();
+          return;
         }
+
+        const payload = next.value;
+        controller.enqueue(encoder.encode(formatPayload(payload, format)));
+      },
+      async cancel() {
+        cancelled = true;
+        // Browser/client cancellation should abort the underlying model run, not
+        // just stop serializing bytes from this Response.
+        onCancel?.();
+        await iterator?.return?.();
       }
     },
-    async cancel() {
-      cancelled = true;
-      // Browser/client cancellation should abort the underlying model run, not
-      // just stop serializing bytes from this Response.
-      onCancel?.();
-      void iterator?.return?.();
+    {
+      highWaterMark: 0
     }
-  });
+  );
 }
 
 export function toResponse<T>(
