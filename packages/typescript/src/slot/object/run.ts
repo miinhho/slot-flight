@@ -45,6 +45,7 @@ export class SlotObjectRun {
   cancel(): void {
     this.cancelSource?.();
     void this.sourceIterator?.return?.();
+    this.rejectFinal(new DOMException("Stream cancelled", "AbortError"));
   }
 
   private startFinalObjectDrain(): void {
@@ -109,7 +110,6 @@ export class SlotObjectRun {
       if (!completed) {
         this.cancel();
         await iterator.return?.();
-        this.rejectFinal(new DOMException("Stream cancelled", "AbortError"));
       }
     }
   }

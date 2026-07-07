@@ -213,6 +213,53 @@ describe("SlotObjectStream web output", () => {
     expect(events).toEqual([{ type: "done", state: { status: "ok" } }]);
   });
 
+  it("does not pull readable stream events before the reader asks", async () => {
+    let reads = 0;
+    let closed = false;
+
+    const source = async function* (): AsyncGenerator<SlotFlightEvent> {
+      try {
+        reads += 1;
+        yield { type: "done", state: { status: "ok" } };
+      } finally {
+        closed = true;
+      }
+    };
+
+    const stream = createSlotObjectStream<{ status: string }>(source());
+    const readable = stream.toReadableStream({ source: "events" });
+
+    await Promise.resolve();
+    expect(reads).toBe(0);
+
+    const reader = readable.getReader();
+    await Promise.resolve();
+    expect(reads).toBe(0);
+
+    const first = await reader.read();
+    expect(first.done).toBe(false);
+    expect(reads).toBe(1);
+
+    await reader.cancel();
+    expect(closed).toBe(true);
+  });
+
+  it("rejects finalObject when a readable stream is cancelled before reading", async () => {
+    let started = false;
+    const source = async function* (): AsyncGenerator<SlotFlightEvent> {
+      started = true;
+      yield { type: "done", state: { status: "ok" } };
+    };
+
+    const stream = createSlotObjectStream<{ status: string }>(source());
+    const readable = stream.toReadableStream({ source: "events" });
+
+    await readable.cancel();
+
+    expect(started).toBe(false);
+    await expect(stream.finalObject).rejects.toThrow("Stream cancelled");
+  });
+
   it("rejects a second live view after finalObject starts consuming", async () => {
     const source = async function* (): AsyncGenerator<SlotFlightEvent> {
       yield { type: "slot-start", slot: "status", attempt: 1, state: {} };
