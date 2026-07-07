@@ -61,6 +61,42 @@ describe("slotObject definitions", () => {
     ]);
   });
 
+  it("follows common Zod wrappers when inferring structural slots", () => {
+    const output = slotObject({
+      schema: z.object({
+        title: z.string().min(1).optional().describe("Write a title."),
+        metadata: z
+          .object({
+            audience: z.string().describe("Write the audience.")
+          })
+          .nullable()
+          .describe("Write metadata."),
+        tags: z.array(z.string().min(1)).default([]).describe("Write tags.")
+      })
+    });
+
+    expect(output.slots).toEqual([
+      expect.objectContaining({
+        path: "title",
+        prompt: "Write a title."
+      }),
+      expect.objectContaining({
+        path: "metadata.audience",
+        prompt: "Write metadata.\nWrite the audience."
+      }),
+      expect.objectContaining({
+        path: "tags[]",
+        prompt: "Write tags."
+      })
+    ]);
+    expect(output.slots[0]?.schema.safeParse(undefined)).toMatchObject({
+      success: true
+    });
+    expect(output.slots[2]?.schema.safeParse("")).toMatchObject({
+      success: false
+    });
+  });
+
   it("rejects fields that are not described", () => {
     expect(() =>
       slotObject({
@@ -78,6 +114,26 @@ describe("slotObject definitions", () => {
           payload: z
             .record(z.string(), z.string())
             .describe("Write payload fields.")
+        })
+      })
+    ).toThrow(SlotFlightConfigurationError);
+  });
+
+  it("rejects nested arrays and dynamic array items", () => {
+    expect(() =>
+      slotObject({
+        schema: z.object({
+          matrix: z.array(z.array(z.string())).describe("Write matrix rows.")
+        })
+      })
+    ).toThrow(SlotFlightConfigurationError);
+
+    expect(() =>
+      slotObject({
+        schema: z.object({
+          payloads: z
+            .array(z.record(z.string(), z.string()))
+            .describe("Write payloads.")
         })
       })
     ).toThrow(SlotFlightConfigurationError);

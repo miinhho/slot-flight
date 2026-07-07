@@ -162,6 +162,32 @@ class SlotFrameParserTest(unittest.TestCase):
             [(event.type, event.slot, event.value) for event in events],
         )
 
+    def test_rejects_stream_that_ends_before_active_slot_closes(self):
+        parser = SlotFrameParser({"1": "name"})
+
+        parser.push("<1>Alice")
+
+        with self.assertRaisesRegex(
+            Exception, "Slot stream ended before closing delimiter."
+        ):
+            parser.finish()
+
+    def test_rejects_trailing_content_after_valid_slot_frames(self):
+        parser = SlotFrameParser({"1": "name"})
+
+        parser.push("<1>Alice\n</1>")
+
+        with self.assertRaisesRegex(Exception, "Expected slot id header"):
+            parser.push("trailing")
+
+    def test_rejects_duplicate_slot_frames(self):
+        parser = SlotFrameParser({"1": "name"})
+
+        parser.push("<1>Alice\n</1>")
+
+        with self.assertRaisesRegex(Exception, 'Received duplicate slot "name"'):
+            parser.push("<1>Bob\n</1>")
+
     def test_rejects_partial_headers_longer_than_registered_slot_id_width(self):
         parser = SlotFrameParser({"1": "name"})
 

@@ -159,6 +159,49 @@ describe("SlotObjectStream web output", () => {
     });
   });
 
+  it("streams cumulative partial object snapshots instead of patches", async () => {
+    const generate: SlotGenerator = async function* (request) {
+      const summary = request.slots.find((slot) => slot.path === "summary");
+      const priority = request.slots.find((slot) => slot.path === "priority");
+      expect(summary).toBeDefined();
+      expect(priority).toBeDefined();
+
+      yield `<${summary?.id}>ready\n</${summary?.id}>`;
+      yield `<${priority?.id}>high\n</${priority?.id}>`;
+    };
+
+    const stream = createSlotObjectStream<{
+      summary: string;
+      priority: "low" | "high";
+    }>(
+      slotFlight({
+        schema: z.object({
+          summary: z.string().min(1),
+          priority: z.enum(["low", "high"])
+        }),
+        generate,
+        slots: slotObject({
+          schema: z.object({
+            summary: z.string().min(1).describe("Write a summary."),
+            priority: z.enum(["low", "high"]).describe("Write priority.")
+          })
+        }).slots
+      }).run()
+    );
+
+    const partials = [];
+    for await (const partial of stream.partialObjectStream) {
+      partials.push(partial);
+    }
+
+    expect(partials).toContainEqual({ summary: "ready" });
+    expect(partials).toContainEqual({
+      summary: "ready",
+      priority: "high"
+    });
+    expect(partials).not.toContainEqual({ priority: "high" });
+  });
+
   it("can return an HTTP Response over low-level slot events", async () => {
     const generate: SlotGenerator = async function* (request) {
       const slot = firstSlot(request);

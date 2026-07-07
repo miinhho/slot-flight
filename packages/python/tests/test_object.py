@@ -35,7 +35,7 @@ class TitleOnly(BaseModel):
 
 
 class SlotObjectTest(unittest.IsolatedAsyncioTestCase):
-    async def test_inferrs_slots_from_pydantic_field_descriptions(self):
+    async def test_infers_slots_from_pydantic_field_descriptions(self):
         output = slot_object(Article)
 
         self.assertEqual(
@@ -94,6 +94,38 @@ class SlotObjectTest(unittest.IsolatedAsyncioTestCase):
             'Pydantic field "payload" cannot infer structural slots',
         ):
             slot_object(DynamicPayload)
+
+    def test_inherits_parent_descriptions_for_nested_models(self):
+        output = slot_object(NestedArticle)
+
+        self.assertEqual(
+            [(slot.path, slot.prompt) for slot in output.slots],
+            [
+                (
+                    "metadata.audience",
+                    "Write the full metadata object.\n"
+                    "Write the intended audience.",
+                )
+            ],
+        )
+
+    def test_rejects_nested_array_and_dynamic_array_items(self):
+        class NestedArrayPayload(BaseModel):
+            matrix: list[list[str]] = Field(description="Write matrix rows.")
+
+        class DynamicArrayPayload(BaseModel):
+            payloads: list[dict[str, str]] = Field(description="Write payloads.")
+
+        with self.assertRaisesRegex(
+            SlotFlightConfigurationError,
+            'Array field "matrix" cannot infer structural slots',
+        ):
+            slot_object(NestedArrayPayload)
+        with self.assertRaisesRegex(
+            SlotFlightConfigurationError,
+            'Array field "payloads" cannot infer structural slots',
+        ):
+            slot_object(DynamicArrayPayload)
 
     def test_rejects_non_pydantic_models(self):
         with self.assertRaisesRegex(
