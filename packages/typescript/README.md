@@ -62,7 +62,9 @@ outside `slotObject()`.
   or raw slot events.
 
 Choose one live view per run. After a live view finishes, `finalObject` can
-still be awaited for the validated result.
+still be awaited for the validated result. HTTP stream views are pull-driven:
+the underlying run advances as the response body is read, and cancellation
+rejects `finalObject`.
 
 Low-level events can drive draft UI:
 
