@@ -91,9 +91,9 @@ async for line in stream.to_ndjson(source="events"):
 ```
 
 `final_object()`, `completed_slot_stream()`, `partial_object_stream()`, and
-`slot_event_stream()` consume one underlying model run. After the run finishes,
-later consumers replay cached events. A second live consumer is rejected while a
-run is still active.
+`slot_event_stream()` consume one underlying model run. Choose one live stream
+view per run. After that view finishes, `final_object()` can still return the
+final state or rethrow the terminal stream error.
 
 If you already have a slot event stream, wrap it with
 `create_slot_object_event_stream()` to reuse the same object-stream views:

@@ -31,8 +31,12 @@ class SlotObjectStream:
             await close_stream(events)
 
     async def slot_event_stream(self):
-        async for event in self.events():
-            yield event
+        events = self.events()
+        try:
+            async for event in events:
+                yield event
+        finally:
+            await close_stream(events)
 
     async def completed_slots(self):
         events = self._consume_run("completed_slot_stream")
@@ -43,8 +47,12 @@ class SlotObjectStream:
             await close_stream(events)
 
     async def completed_slot_stream(self):
-        async for slot in self.completed_slots():
-            yield slot
+        slots = self.completed_slots()
+        try:
+            async for slot in slots:
+                yield slot
+        finally:
+            await close_stream(slots)
 
     async def partial_objects(self):
         events = self._consume_run("partial_object_stream")
@@ -55,8 +63,12 @@ class SlotObjectStream:
             await close_stream(events)
 
     async def partial_object_stream(self):
-        async for partial in self.partial_objects():
-            yield partial
+        partials = self.partial_objects()
+        try:
+            async for partial in partials:
+                yield partial
+        finally:
+            await close_stream(partials)
 
     async def final_object(self):
         if self._final_object is not _FINAL_OBJECT_UNSET:
@@ -98,6 +110,13 @@ class SlotObjectStream:
             raise
         finally:
             await close_stream(events)
+            if (
+                self._final_object is _FINAL_OBJECT_UNSET
+                and self._final_error is None
+            ):
+                self._final_error = RuntimeError(
+                    "Slot object stream cancelled before a final object."
+                )
 
     def _claim(self, consumer: str):
         if self._consumed_by is None:

@@ -349,6 +349,34 @@ class SlotObjectTest(unittest.IsolatedAsyncioTestCase):
         with self.assertRaisesRegex(RuntimeError, "provider disconnected"):
             await stream.final_object()
 
+    async def test_final_object_rethrows_cancellation_after_view_closes_early(self):
+        closed = False
+        release = asyncio.Event()
+
+        async def source():
+            nonlocal closed
+            try:
+                yield {
+                    "type": "slot-start",
+                    "slot": "title",
+                    "attempt": 1,
+                    "state": {},
+                }
+                await release.wait()
+            finally:
+                closed = True
+
+        stream = create_slot_object_event_stream(source)
+        iterator = stream.slot_event_stream().__aiter__()
+
+        await iterator.__anext__()
+        await iterator.aclose()
+        await asyncio.sleep(0)
+
+        self.assertTrue(closed)
+        with self.assertRaisesRegex(RuntimeError, "cancelled before a final object"):
+            await stream.final_object()
+
 
 if __name__ == "__main__":
     unittest.main()
