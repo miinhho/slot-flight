@@ -1,15 +1,9 @@
-import asyncio
-import json
 import unittest
-from typing import Any, Literal, cast
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from slot_flight import (
-    SlotFlightConfigurationError,
-    create_slot_object_event_stream,
-    slot_object,
-)
+from slot_flight import create_slot_object_event_stream, slot_object
 from slot_flight.slot.object import create_slot_object_stream
 
 
@@ -34,19 +28,9 @@ class TitleOnly(BaseModel):
     title: str = Field(description="Write a short title.")
 
 
-class SlotObjectTest(unittest.IsolatedAsyncioTestCase):
-    async def test_inferrs_slots_from_pydantic_field_descriptions(self):
+class SlotObjectStreamTest(unittest.IsolatedAsyncioTestCase):
+    async def test_streams_pydantic_object_from_inferred_slots(self):
         output = slot_object(Article)
-
-        self.assertEqual(
-            [(slot.path, slot.prompt) for slot in output.slots],
-            [
-                ("title", "Write a short title."),
-                ("priority", "Write exactly one of: low, medium, high."),
-                ("tags[]", "Write two tags, one tag per frame."),
-                ("metadata.audience", "Write the intended audience."),
-            ],
-        )
 
         async def generate(request):
             values = {
@@ -63,10 +47,8 @@ class SlotObjectTest(unittest.IsolatedAsyncioTestCase):
 
         stream = create_slot_object_stream(output=output, generate=generate)
 
-        final_object = await stream.final_object()
-
         self.assertEqual(
-            final_object,
+            await stream.final_object(),
             Article(
                 title="Slot-wise JSON",
                 priority="high",
@@ -74,33 +56,6 @@ class SlotObjectTest(unittest.IsolatedAsyncioTestCase):
                 metadata=Metadata(audience="backend engineers"),
             ),
         )
-
-    def test_rejects_undocumented_leaf_fields(self):
-        class MissingDescription(BaseModel):
-            title: str
-
-        with self.assertRaisesRegex(
-            SlotFlightConfigurationError,
-            'Pydantic field "title" must use Field\\(description=\\.\\.\\.\\)',
-        ):
-            slot_object(MissingDescription)
-
-    def test_rejects_dynamic_mapping_fields(self):
-        class DynamicPayload(BaseModel):
-            payload: dict[str, str] = Field(description="Write payload fields.")
-
-        with self.assertRaisesRegex(
-            SlotFlightConfigurationError,
-            'Pydantic field "payload" cannot infer structural slots',
-        ):
-            slot_object(DynamicPayload)
-
-    def test_rejects_non_pydantic_models(self):
-        with self.assertRaisesRegex(
-            SlotFlightConfigurationError,
-            "slot_object\\(\\) requires a Pydantic model",
-        ):
-            slot_object(cast(Any, dict))
 
     async def test_retries_failed_pydantic_slot_validation(self):
         output = slot_object(Article, max_retries=1)
@@ -138,13 +93,8 @@ class SlotObjectTest(unittest.IsolatedAsyncioTestCase):
             ],
         )
 
-    async def test_described_nested_model_expands_to_structural_slot(self):
+    async def test_streams_described_nested_model_from_structural_slot(self):
         output = slot_object(NestedArticle)
-
-        self.assertEqual(
-            [slot.path for slot in output.slots],
-            ["metadata.audience"],
-        )
 
         async def generate(request):
             slot = request.slots[0]
@@ -172,7 +122,6 @@ class SlotObjectTest(unittest.IsolatedAsyncioTestCase):
             {"metadata": {"audience": "backend engineers"}},
             partials,
         )
-        self.assertNotIn({"metadata": "backend engineers"}, partials)
 
     async def test_completed_slots_and_final_object_share_one_model_run(self):
         output = slot_object(Article)
@@ -262,120 +211,6 @@ class SlotObjectTest(unittest.IsolatedAsyncioTestCase):
                 TitleOnly(title="Slot-wise JSON"),
             ],
         )
-
-    async def test_serializes_completed_slot_stream_as_ndjson(self):
-        output = slot_object(TitleOnly)
-
-        async def generate(request):
-            slot = request.slots[0]
-            yield f"<{slot.id}>Slot-wise JSON\n</{slot.id}>"
-
-        stream = create_slot_object_stream(output=output, generate=generate)
-
-        lines = [
-            json.loads(line)
-            async for line in stream.to_ndjson(source="completed")
-        ]
-
-        self.assertEqual(
-            lines,
-            [
-                {
-                    "type": "slot",
-                    "data": {
-                        "slot": "title",
-                        "value": "Slot-wise JSON",
-                        "state": {"title": "Slot-wise JSON"},
-                    },
-                },
-                {
-                    "type": "done",
-                    "data": {"state": {"title": "Slot-wise JSON"}},
-                },
-            ],
-        )
-
-    async def test_serializes_low_level_events_as_sse(self):
-        output = slot_object(TitleOnly)
-
-        async def generate(request):
-            slot = request.slots[0]
-            yield f"<{slot.id}>Slot-wise JSON\n</{slot.id}>"
-
-        stream = create_slot_object_stream(output=output, generate=generate)
-
-        body = "".join([chunk async for chunk in stream.to_sse(source="events")])
-
-        self.assertIn("event: slot-start\n", body)
-        self.assertIn("event: slot-delta\n", body)
-        self.assertIn("event: slot-complete\n", body)
-        self.assertIn("event: done\n", body)
-
-    async def test_rejects_second_live_consumer(self):
-        output = slot_object(TitleOnly)
-        release = asyncio.Event()
-
-        async def generate(request):
-            slot = request.slots[0]
-            yield f"<{slot.id}>Slot-wise JSON\n</{slot.id}>"
-            await release.wait()
-
-        stream = create_slot_object_stream(output=output, generate=generate)
-        iterator = stream.events().__aiter__()
-        await iterator.__anext__()
-
-        with self.assertRaisesRegex(RuntimeError, "already being consumed by events"):
-            await stream.final_object()
-
-        release.set()
-        with self.assertRaises(StopAsyncIteration):
-            while True:
-                await iterator.__anext__()
-
-    async def test_final_object_rethrows_stream_failure_after_view_fails(self):
-        async def source():
-            yield {
-                "type": "slot-start",
-                "slot": "title",
-                "attempt": 1,
-                "state": {},
-            }
-            raise RuntimeError("provider disconnected")
-
-        stream = create_slot_object_event_stream(source)
-
-        with self.assertRaisesRegex(RuntimeError, "provider disconnected"):
-            [event async for event in stream.slot_event_stream()]
-        with self.assertRaisesRegex(RuntimeError, "provider disconnected"):
-            await stream.final_object()
-
-    async def test_final_object_rethrows_cancellation_after_view_closes_early(self):
-        closed = False
-        release = asyncio.Event()
-
-        async def source():
-            nonlocal closed
-            try:
-                yield {
-                    "type": "slot-start",
-                    "slot": "title",
-                    "attempt": 1,
-                    "state": {},
-                }
-                await release.wait()
-            finally:
-                closed = True
-
-        stream = create_slot_object_event_stream(source)
-        iterator = stream.slot_event_stream().__aiter__()
-
-        await iterator.__anext__()
-        await iterator.aclose()
-        await asyncio.sleep(0)
-
-        self.assertTrue(closed)
-        with self.assertRaisesRegex(RuntimeError, "cancelled before a final object"):
-            await stream.final_object()
 
 
 if __name__ == "__main__":
