@@ -1,5 +1,5 @@
-import type { z } from "zod";
 import { slotFlight } from "../engine.js";
+import type { SchemaOutput, ZodSchema } from "../schema.js";
 import {
   createSlotObjectStream,
   type SlotObjectOutput,
@@ -28,7 +28,7 @@ export type VercelStreamTextParams = Record<string, unknown> & {
   abortSignal?: AbortSignal;
 };
 
-export type VercelStreamSlotObjectParams<TSchema extends z.ZodTypeAny> =
+export type VercelStreamSlotObjectParams<TSchema extends ZodSchema> =
   VercelStreamTextParams & {
     streamText: VercelStreamText;
     output: SlotObjectOutput<TSchema>;
@@ -36,13 +36,15 @@ export type VercelStreamSlotObjectParams<TSchema extends z.ZodTypeAny> =
     run?: SlotFlightRunOptions;
   };
 
-export function streamSlotObject<TSchema extends z.ZodTypeAny>({
+export function streamSlotObject<TSchema extends ZodSchema>({
   streamText,
   output,
   slotPromptRole = "user",
   run,
   ...params
-}: VercelStreamSlotObjectParams<TSchema>): SlotObjectStream<z.infer<TSchema>> {
+}: VercelStreamSlotObjectParams<TSchema>): SlotObjectStream<
+  SchemaOutput<TSchema>
+> {
   const streamController = new AbortController();
   const generate = createTextStreamGenerator(async (request) => {
     const result = await callStreamText(

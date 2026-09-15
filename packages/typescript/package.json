@@ -59,15 +59,16 @@
     "slot-generation"
   ],
   "license": "MIT",
-  "dependencies": {
-    "zod": "^3.25.67"
-  },
   "devDependencies": {
     "@ai-sdk/openai": "^4.0.2",
     "@biomejs/biome": "^2.5.1",
     "@types/bun": "latest",
     "ai": "^7.0.4",
     "openai": "^6.45.0",
-    "typescript": "^5.8.3"
+    "typescript": "^5.8.3",
+    "zod": "^4.0.0"
+  },
+  "peerDependencies": {
+    "zod": "^3.25.67 || ^4.0.0"
   }
 }

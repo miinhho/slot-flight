@@ -1,4 +1,4 @@
-import type { z } from "zod";
+import type { ZodIssue } from "./schema.js";
 
 export class SlotFlightError extends Error {}
 
@@ -12,7 +12,7 @@ export class SlotFlightConfigurationError extends SlotFlightError {
 export class SlotFlightValidationError extends SlotFlightError {
   constructor(
     readonly path: string,
-    readonly issues: z.ZodIssue[]
+    readonly issues: ZodIssue[]
   ) {
     super(`Slot "${path}" failed validation.`);
     this.name = "SlotFlightValidationError";

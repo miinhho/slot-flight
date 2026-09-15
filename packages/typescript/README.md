@@ -10,6 +10,10 @@ Full TypeScript SDK notes live in the
 bun add slot-flight zod
 ```
 
+Zod is a required peer dependency: install it alongside `slot-flight`.
+Both Zod 3 (`^3.25.67`) and Zod 4 (`^4.0.0`) are supported; the examples
+work with either major.
+
 ```ts
 import OpenAI from "openai";
 import { z } from "zod";

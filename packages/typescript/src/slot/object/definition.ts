@@ -1,19 +1,25 @@
-import { z } from "zod";
 import { SlotFlightConfigurationError } from "../../errors.js";
+import {
+  arrayElement,
+  objectShape,
+  schemaKind,
+  unwrapSchema,
+  type ZodSchema
+} from "../../schema.js";
 import type { SlotDefinition } from "../../types.js";
 
-export interface SlotObjectOptions<TSchema extends z.ZodTypeAny> {
+export interface SlotObjectOptions<TSchema extends ZodSchema> {
   schema: TSchema;
   prompt?: string;
   maxRetries?: number;
 }
 
-export interface SlotObjectOutput<TSchema extends z.ZodTypeAny>
+export interface SlotObjectOutput<TSchema extends ZodSchema>
   extends SlotObjectOptions<TSchema> {
   slots: SlotDefinition[];
 }
 
-export function slotObject<TSchema extends z.ZodTypeAny>(
+export function slotObject<TSchema extends ZodSchema>(
   options: SlotObjectOptions<TSchema>
 ): SlotObjectOutput<TSchema> {
   return {
@@ -22,16 +28,16 @@ export function slotObject<TSchema extends z.ZodTypeAny>(
   };
 }
 
-function inferSlots(schema: z.ZodTypeAny): SlotDefinition[] {
+function inferSlots(schema: ZodSchema): SlotDefinition[] {
   const root = unwrapSchema(schema);
-  if (!(root instanceof z.ZodObject)) {
+  if (schemaKind(root) !== "object") {
     throw new SlotFlightConfigurationError(
       "slotObject() requires a Zod object schema."
     );
   }
 
-  const slots = Object.entries(root.shape).flatMap(([key, child]) =>
-    inferSlotAtPath(child as z.ZodTypeAny, key)
+  const slots = Object.entries(objectShape(root)).flatMap(([key, child]) =>
+    inferSlotAtPath(child, key)
   );
 
   if (slots.length === 0) {
@@ -43,12 +49,12 @@ function inferSlots(schema: z.ZodTypeAny): SlotDefinition[] {
   return slots;
 }
 
-function inferSlotAtPath(schema: z.ZodTypeAny, path: string): SlotDefinition[] {
+function inferSlotAtPath(schema: ZodSchema, path: string): SlotDefinition[] {
   return inferSlotAtPathWithPrompts(schema, path, []);
 }
 
 function inferSlotAtPathWithPrompts(
-  schema: z.ZodTypeAny,
+  schema: ZodSchema,
   path: string,
   inheritedPrompts: string[]
 ): SlotDefinition[] {
@@ -57,21 +63,17 @@ function inferSlotAtPathWithPrompts(
   const prompts =
     prompt === undefined ? inheritedPrompts : [...inheritedPrompts, prompt];
 
-  if (unwrapped instanceof z.ZodObject) {
-    return Object.entries(unwrapped.shape).flatMap(([key, child]) =>
-      inferSlotAtPathWithPrompts(
-        child as z.ZodTypeAny,
-        `${path}.${key}`,
-        prompts
-      )
+  if (schemaKind(unwrapped) === "object") {
+    return Object.entries(objectShape(unwrapped)).flatMap(([key, child]) =>
+      inferSlotAtPathWithPrompts(child, `${path}.${key}`, prompts)
     );
   }
 
-  if (unwrapped instanceof z.ZodArray) {
+  if (schemaKind(unwrapped) === "array") {
     return inferArraySlots(unwrapped, path, prompts);
   }
 
-  if (unwrapped instanceof z.ZodRecord || unwrapped instanceof z.ZodMap) {
+  if (schemaKind(unwrapped) === "record" || schemaKind(unwrapped) === "map") {
     throw new SlotFlightConfigurationError(
       `Schema field "${path}" cannot infer structural slots for dynamic object or map values.`
     );
@@ -94,28 +96,24 @@ function inferSlotAtPathWithPrompts(
 }
 
 function inferArraySlots(
-  schema: z.ZodArray<z.ZodTypeAny>,
+  schema: ZodSchema,
   path: string,
   prompts: string[]
 ): SlotDefinition[] {
-  const itemSchema = unwrapSchema(schema.element);
-  if (itemSchema instanceof z.ZodObject) {
-    return Object.entries(itemSchema.shape).flatMap(([key, child]) =>
-      inferSlotAtPathWithPrompts(
-        child as z.ZodTypeAny,
-        `${path}[].${key}`,
-        prompts
-      )
+  const itemSchema = unwrapSchema(arrayElement(schema));
+  if (schemaKind(itemSchema) === "object") {
+    return Object.entries(objectShape(itemSchema)).flatMap(([key, child]) =>
+      inferSlotAtPathWithPrompts(child, `${path}[].${key}`, prompts)
     );
   }
 
-  if (itemSchema instanceof z.ZodArray) {
+  if (schemaKind(itemSchema) === "array") {
     throw new SlotFlightConfigurationError(
       `Array field "${path}" cannot infer structural slots for nested array items.`
     );
   }
 
-  if (itemSchema instanceof z.ZodRecord || itemSchema instanceof z.ZodMap) {
+  if (schemaKind(itemSchema) === "record" || schemaKind(itemSchema) === "map") {
     throw new SlotFlightConfigurationError(
       `Array field "${path}" cannot infer structural slots for dynamic object or map items.`
     );
@@ -132,24 +130,7 @@ function inferArraySlots(
     {
       path: `${path}[]`,
       prompt: slotPrompt,
-      schema: schema.element
+      schema: arrayElement(schema)
     }
   ];
-}
-
-function unwrapSchema(schema: z.ZodTypeAny): z.ZodTypeAny {
-  let current = schema;
-
-  // Slot inference should follow the value shape through common wrappers such
-  // as optional/default, because those wrappers do not change the JSON path.
-  while (
-    current instanceof z.ZodOptional ||
-    current instanceof z.ZodNullable ||
-    current instanceof z.ZodDefault ||
-    current instanceof z.ZodCatch
-  ) {
-    current = current._def.innerType;
-  }
-
-  return current;
 }
