@@ -26,6 +26,9 @@ concurrency:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        zod: [locked, "3.25.67", "4.0.0"]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -38,6 +41,11 @@ jobs:
       - name: Install dependencies
         working-directory: packages/typescript
         run: bun install --frozen-lockfile
+
+      - name: Install minimum supported Zod version
+        if: matrix.zod != 'locked'
+        working-directory: packages/typescript
+        run: bun add --dev --exact zod@${{ matrix.zod }}
 
       - name: Check formatting and lint
         working-directory: packages/typescript

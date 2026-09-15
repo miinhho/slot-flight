@@ -1,4 +1,4 @@
-import type { z } from "zod";
+import type { ZodSchema } from "./schema.js";
 
 export type MaybePromise<T> = T | Promise<T>;
 
@@ -53,7 +53,7 @@ export interface SlotDefinition<TValue = unknown> {
    */
   path: string;
   prompt?: string | ((slot: SlotFrameRequest) => string);
-  schema: z.ZodType<TValue>;
+  schema: ZodSchema<TValue>;
   count?: number;
   /**
    * Overrides the engine retry count for this slot only.
@@ -91,7 +91,7 @@ export type SlotGenerator = (
   request: SlotFlightRequest
 ) => AsyncIterable<string> | Promise<AsyncIterable<string>>;
 
-export interface SlotFlightOptions<TSchema extends z.ZodTypeAny> {
+export interface SlotFlightOptions<TSchema extends ZodSchema> {
   schema: TSchema;
   slots: SlotDefinition[];
   generate: SlotGenerator;

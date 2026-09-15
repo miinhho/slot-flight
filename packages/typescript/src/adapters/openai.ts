@@ -1,5 +1,5 @@
-import type { z } from "zod";
 import { slotFlight } from "../engine.js";
+import type { SchemaOutput, ZodSchema } from "../schema.js";
 import {
   createSlotObjectStream,
   type SlotObjectOutput,
@@ -45,7 +45,7 @@ export interface OpenAIStreamSlotObjectRequestOptions {
   signal?: AbortSignal;
 }
 
-export type OpenAIStreamSlotObjectParams<TSchema extends z.ZodTypeAny> =
+export type OpenAIStreamSlotObjectParams<TSchema extends ZodSchema> =
   OpenAIChatCompletionParams & {
     client: OpenAIChatCompletionsClient;
     output: SlotObjectOutput<TSchema>;
@@ -53,7 +53,7 @@ export type OpenAIStreamSlotObjectParams<TSchema extends z.ZodTypeAny> =
     run?: SlotFlightRunOptions;
   };
 
-export type OpenAIClientStreamSlotObjectParams<TSchema extends z.ZodTypeAny> =
+export type OpenAIClientStreamSlotObjectParams<TSchema extends ZodSchema> =
   OpenAIChatCompletionParams & {
     output: SlotObjectOutput<TSchema>;
     slotPromptRole?: string;
@@ -61,10 +61,10 @@ export type OpenAIClientStreamSlotObjectParams<TSchema extends z.ZodTypeAny> =
   };
 
 export interface SlotFlightOpenAIChatCompletionsExtension {
-  streamSlotObject: <TSchema extends z.ZodTypeAny>(
+  streamSlotObject: <TSchema extends ZodSchema>(
     body: OpenAIClientStreamSlotObjectParams<TSchema>,
     options?: OpenAIStreamSlotObjectRequestOptions
-  ) => SlotObjectStream<z.infer<TSchema>>;
+  ) => SlotObjectStream<SchemaOutput<TSchema>>;
 }
 
 export type SlotFlightOpenAIClient<
@@ -88,7 +88,7 @@ export function withSlotFlight<TClient extends OpenAIChatCompletionsClient>(
       configurable: true,
       enumerable: false,
       writable: true,
-      value: <TSchema extends z.ZodTypeAny>(
+      value: <TSchema extends ZodSchema>(
         body: OpenAIClientStreamSlotObjectParams<TSchema>,
         options: OpenAIStreamSlotObjectRequestOptions = {}
       ) => {
@@ -108,13 +108,15 @@ export function withSlotFlight<TClient extends OpenAIChatCompletionsClient>(
   return client as SlotFlightOpenAIClient<TClient>;
 }
 
-export function streamSlotObject<TSchema extends z.ZodTypeAny>({
+export function streamSlotObject<TSchema extends ZodSchema>({
   client,
   output,
   slotPromptRole = "user",
   run,
   ...chat
-}: OpenAIStreamSlotObjectParams<TSchema>): SlotObjectStream<z.infer<TSchema>> {
+}: OpenAIStreamSlotObjectParams<TSchema>): SlotObjectStream<
+  SchemaOutput<TSchema>
+> {
   const streamController = new AbortController();
   const generate = createChunkStreamGenerator({
     stream: (request) =>

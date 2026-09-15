@@ -9,6 +9,10 @@ assembly.
 bun add slot-flight zod
 ```
 
+Zod is a required peer dependency: install it alongside `slot-flight`.
+Both Zod 3 (`^3.25.67`) and Zod 4 (`^4.0.0`) are supported; the examples
+work with either major.
+
 Provider SDKs stay in your application:
 
 ```sh

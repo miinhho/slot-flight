@@ -4,9 +4,6 @@
   "workspaces": {
     "": {
       "name": "slot-flight",
-      "dependencies": {
-        "zod": "^3.25.67",
-      },
       "devDependencies": {
         "@ai-sdk/openai": "^4.0.2",
         "@biomejs/biome": "^2.5.1",
@@ -14,6 +11,10 @@
         "ai": "^7.0.4",
         "openai": "^6.45.0",
         "typescript": "^5.8.3",
+        "zod": "^4.0.0",
+      },
+      "peerDependencies": {
+        "zod": "^3.25.67 || ^4.0.0",
       },
     },
   },
@@ -68,6 +69,6 @@
 
     "undici-types": ["undici-types@7.18.2", "", {}, "sha512-AsuCzffGHJybSaRrmr5eHr81mwJU3kjw6M+uprWvCXiNeN9SOGwQ3Jn8jb8m3Z6izVgknn1R0FTCEAP2QrLY/w=="],
 
-    "zod": ["zod@3.25.76", "", {}, "sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ=="],
+    "zod": ["zod@4.6.5", "", {}, "sha512-v5l/aFXZQeai4awLbOpSoHecE9UiMrnfx75tEXLjNonXVARxQ5mOeipTjROUchszUNCqnE+hqAMujRsRHsut2Q=="],
   }
 }

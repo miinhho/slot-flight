@@ -1,5 +1,10 @@
-import type { z } from "zod";
 import { SlotFlightValidationError } from "./errors.js";
+import {
+  parseSchema,
+  type SchemaOutput,
+  type ZodIssue,
+  type ZodSchema
+} from "./schema.js";
 import type { PendingFailure } from "./slot/execution/types.js";
 import {
   type CompiledSlot,
@@ -23,7 +28,7 @@ export {
   SlotFlightValidationError
 } from "./errors.js";
 
-export class SlotFlight<TSchema extends z.ZodTypeAny> {
+export class SlotFlight<TSchema extends ZodSchema> {
   private readonly schema: TSchema;
   private readonly slots: CompiledSlot[];
   private readonly generateSlot: SlotGenerator;
@@ -40,7 +45,7 @@ export class SlotFlight<TSchema extends z.ZodTypeAny> {
 
   async *run(
     options: SlotFlightRunOptions = {}
-  ): AsyncGenerator<SlotFlightEvent, SlotFlightResult<z.infer<TSchema>>> {
+  ): AsyncGenerator<SlotFlightEvent, SlotFlightResult<SchemaOutput<TSchema>>> {
     const state = {};
 
     for await (const event of runSlotFrameStream({
@@ -58,7 +63,7 @@ export class SlotFlight<TSchema extends z.ZodTypeAny> {
     }
 
     ensureRepeatableArrays(state, this.slots);
-    const parsed = this.schema.parse(state);
+    const parsed = parseSchema(this.schema, state);
     yield {
       type: "done",
       state: cloneJson(parsed)
@@ -77,7 +82,7 @@ export class SlotFlight<TSchema extends z.ZodTypeAny> {
       return new Map();
     }
 
-    const issuesBySlot = new Map<CompiledSlot, z.ZodIssue[]>();
+    const issuesBySlot = new Map<CompiledSlot, ZodIssue[]>();
     const repeatSlots = slots.filter((slot) => slot.repeat !== "none");
     for (const issue of result.error.issues) {
       for (const slot of repeatSlots) {
@@ -102,14 +107,14 @@ export class SlotFlight<TSchema extends z.ZodTypeAny> {
   }
 }
 
-export function slotFlight<TSchema extends z.ZodTypeAny>(
+export function slotFlight<TSchema extends ZodSchema>(
   options: SlotFlightOptions<TSchema>
 ): SlotFlight<TSchema> {
   return new SlotFlight(options);
 }
 
 function issueTargetsRepeatSlot(
-  issuePath: (string | number)[],
+  issuePath: PropertyKey[],
   slot: CompiledSlot
 ): boolean {
   if (slot.arrayPath === undefined) {
